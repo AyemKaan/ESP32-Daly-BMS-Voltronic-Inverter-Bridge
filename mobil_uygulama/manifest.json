@@ -1,0 +1,9 @@
+{
+  "name": "Akıllı İnverter & Daly BMS Kontrol",
+  "short_name": "BMS & İnverter",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0b1120",
+  "theme_color": "#0b1120",
+  "orientation": "portrait"
+}

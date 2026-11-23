@@ -1,0 +1,23 @@
+# Kişisel şifre, MQTT kanalı ve imzalama anahtarları (GitHub'a asla yüklenmez)
+esp32_daly_inverter_bridge/secrets.h
+mobil_uygulama/mqtt_config.js
+android_apk_src/assets/mqtt_config.js
+*.keystore
+*.jks
+
+# Derleme çıktıları ve kişisel APK paketleri
+esp32_daly_inverter_bridge/build/
+android_apk_src/build_out/
+*.apk
+*.idsig
+*.bin
+*.elf
+*.map
+
+# Eski ESP32 öncesi geçici PC betiği ve eski taslak rehber
+CANLI_KONTROL_BASLAT.ps1
+KURULUM_VE_BAGLANTI_REHBERI.md
+
+# İşletim sistemi dosyaları
+.DS_Store
+Thumbs.db
