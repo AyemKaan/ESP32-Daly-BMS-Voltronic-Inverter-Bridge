@@ -1,4 +1,4 @@
-# ⚡ ESP32 Akıllı İnverter (Voltronic PI30) & Daly 16S LiFePO4 BMS Köprüsü
+# ⚡ ESP32 Smart Inverter (Voltronic PI30) & Daly 16S LiFePO4 BMS Bridge
 
 ![Platform](https://img.shields.io/badge/Platform-ESP32--WROOM--32-blue)
 ![BMS](https://img.shields.io/badge/BMS-Daly%2016S%20LiFePO4%20RS485-green)
@@ -6,92 +6,95 @@
 ![Battery](https://img.shields.io/badge/Battery-48V%20280Ah%20(14.3kWh)-brightgreen)
 ![App](https://img.shields.io/badge/UI-Web%20%2B%20MQTT%20%2B%20Android%20APK-purple)
 
-**48V 280Ah (16S LiFePO4 — 14.3 kWh)** akü paketindeki **Daly 1A Aktif Balanslı Smart BMS** ile **5.5 kW Voltronic PI30 / WatchPower** uyumlu akıllı solar inverteri, **%100 endüstriyel kablolu haberleşme (RS485 + RS232)** üzerinden birleştiren, **çift çekirdekli (Dual-Core FreeRTOS) ESP32** otomasyon köprüsü, yerel Web paneli ve **4.5G/5G gerçek zamanlı MQTT Android APK** projesidir.
+A **100% wired industrial ESP32 Dual-Core (FreeRTOS)** automation bridge that connects a **Daly 8–24S 1A Active Balance Smart BMS** (on a **48V 280Ah / 16S LiFePO4 — 14.3 kWh** battery bank) to a **5.5 kW Voltronic PI30 / WatchPower** solar inverter, complete with a **fast local Web UI**, **real-time MQTT over 4G/5G**, **30-day kWh energy charts**, **Wi-Fi OTA**, and a **native Android WebView APK**.
 
-> **Neden Bu Proje?**
-> Çoğu ekonomik Voltronic/Çin klon akıllı inverterde gerçek LiFePO4 SoC haberleşmesi yoktur; sadece akü voltajına bakarak hatalı zamanda şebekeye geçer veya hücreler dengesizken tam güçle şarj basarak BMS kesmesine yol açar. Bu proje gerçek BMS yüzdesini (`% SoC`), 16 hücre voltajını ve inverter sıcaklığını saniye saniye okuyarak inverteri akıllıca yönetir.
-
----
-
-## 🚀 Temel Özellikler
-
-- **🔌 %100 Kablolu Endüstriyel Bağlantı:** Daly BMS ile **RS485 (`HW-519-R4`)**, İnverter ile **RS232 (`MAX3232 DB9`)** üzerinden kesintisiz haberleşme.
-- **🧠 Çift Çekirdekli (Dual-Core FreeRTOS) Mimari:**
-  - **Çekirdek 0:** Daly BMS RS485 okuma, Voltronic RS232 (`QPIGS`/`QMOD`/`QPIRI`/`QFLAG`), kWh enerji sayacı, pil ömrü/termal otomasyon ve MQTT yayını.
-  - **Çekirdek 1:** `%100` Web sunucusu ve mobil arayüze ayrılmış (`~20 ms` anlık yanıt, sıfır donma).
-- **🔋 10–15 Yıl Pil Ömrü Profili (`%20 – %92`):**
-  - Üst şarj sınırı (`%92` varsayılan, tek tıkla `%80 / %90 / %92 / %95 / %100`): Akü sınıra gelince şarjı **`0A`** durdurur, paneller sadece ev yükünü besler.
-  - Kademeli yumuşak şarj eğrisi (`80A → 40A → 10A`) ve hücre tepe freni (`3.42V / 3.47V / 3.55V`).
-  - Gerçek BMS `% SoC` ve en düşük hücre voltajına göre otomatik **SBU (Akü/Solar)** ↔ **UTI (Şebeke)** geçişi + kış acil şebeke şarjı.
-- **🌡️ İnverter 3 Kademeli Aşırı Isınma Koruması (Termal Kısma + Acil Bypass):**
-  - `≥ 58 °C` → Şarjı **`40A`**'e kısar.
-  - `≥ 64 °C` → Şarjı **`10A`**'e kısar.
-  - `≥ 70 °C` → **ACİL TERMAL BYPASS:** Anında **`POP00` (Şebeke Bypass) + `10A`** göndererek ev elektriğini kesmeden inverter yükünü sıfırlar; `≤ 60 °C` soğuyunca otomatik **`POP02` (SBU)** moduna döner.
-- **📊 Canlı 16 Hücre Matrisi & Daly BMS Tüm Ayarlar:** Her hücrenin milivolt bazlı takibi, `⚖️` canlı 1A aktif balans göstergesi, toplam döngü sayısı (`Cycles`), OVP/UVP/OCP/Sıcaklık limitleri ve MOSFET durumu.
-- **⚙️ Canlı WatchPower İnverter Menüsü (17 Ayar):** `POP`, `PCP`, `MCHGC/MNCHGC (10A–110A)`, `MUCHGC`, `PBT`, `PGR`, `PCVV`, `PBFT`, `PSDV`, `PBCV`, `PBDV` ve `QFLAG` (Buzzer, Bypass, Tasarruf, LCD) tek ekrandan canlı kontrol.
-- **📈 30 Günlük & 24 Saatlik Enerji Grafikleri:** NTP Türkiye saati (`UTC+3`) ile NVS Flash bellekte saklanan günlük/aylık Solar Üretim, Ev Tüketimi, Akü Dolum/Kullanım ve Şebeke kWh grafikleri.
-- **📡 Wi-Fi OTA & 4.5G/5G Android APK:** Evdeyken yerel Wi-Fi (`http://192.168.1.140`), dışarıdayken gerçek zamanlı `MQTT over WSS` ile anlık erişim ve kablosuz yazılım güncelleme (`/update`).
+> **Why This Project?**
+> Most budget Voltronic / clone hybrid inverters lack native LiFePO4 BMS communication. Relying solely on flat LiFePO4 pack voltage causes inaccurate grid/battery switching and risks hitting BMS high-voltage cutoffs during high-current solar charging. This bridge reads true BMS **State of Charge (`% SoC`)**, **all 16 individual cell voltages**, **active balancer status**, and **inverter heatsink temperature** in real time to safely orchestrate charging, switching, and thermal protection.
 
 ---
 
-## 🧰 Kullanılan Donanım ve Yazılımlar (Malzeme Listesi)
+## 🚀 Key Features
 
-### Donanım Bileşenleri
-| Bileşen | Model / Özellik | Kullanım Amacı |
+- **🔌 100% Wired Industrial Communication:**
+  - **Daly BMS** over **RS485 (`HW-519-R4` auto-flow transceiver @ 9600 8N1)** using the standard Daly `0xA5` 13-byte protocol.
+  - **Voltronic Inverter** over **RS232 (`MAX3232 DB9` @ 2400 8N1)** using the `PI30` CRC16 protocol (`QPIGS`, `QMOD`, `QPIRI`, `QFLAG`).
+- **🧠 Dual-Core FreeRTOS Architecture:**
+  - **Core 0:** Daly RS485 polling, Voltronic RS232 polling, NTP kWh energy integrator, battery longevity & thermal automation, and MQTT publishing.
+  - **Core 1:** Dedicated `100%` to the local Web Server & REST API (`~20 ms` response time, zero UI lag).
+- **🔋 10–15 Year LiFePO4 Battery Longevity Profile (`20% – 92%`):**
+  - **Configurable Max SoC Charge Cap** (default `92%`, one-tap `80% / 90% / 92% / 95% / 100%`): Temporarily lowers Bulk/Float to `52.8V` so solar panels continue powering household loads while putting **`0A`** into the battery; resumes automatically at `maxSoc - 3%`.
+  - **Multi-Stage Tapered Charging (`80A → 40A → 10A`):** Gentle `~0.28C` bulk charge (`80A`), tapering down at `88% / 3.42V` (`40A`) and `94% / 3.47V` (`10A`) so the Daly 1A active balancer can effortlessly top-balance cells (`3.55V` emergency cell brake).
+  - **True SoC & Lowest-Cell Switching:** Automatically switches between **SBU (Battery + Solar)** and **UTI (Utility Grid)** based on real BMS `% SoC` and minimum cell voltage, plus optional winter emergency grid top-up (`12% → 20%`).
+- **🌡️ 3-Stage Inverter Over-Temperature Throttling & Emergency Grid Bypass:**
+  - `≥ 58 °C` → Immediately throttles charge current to **`40A`** (recovers at `≤ 54 °C`).
+  - `≥ 64 °C` → Immediately throttles charge current to **`10A`** (recovers at `≤ 59 °C`).
+  - `≥ 70 °C` → **EMERGENCY THERMAL BYPASS:** Immediately forces **`POP00` (Utility Grid Bypass) + `10A` charge**, removing AC load stress from the inverter's IGBTs/MOSFETs without interrupting household power. Automatically returns to **`POP02` (SBU)** once cooled to **`≤ 60 °C`** (and battery `≥ 30%`).
+  - Runs at **highest priority** — bypasses the 45s EEPROM cooldown and operates even if the BMS is momentarily offline.
+- **📊 Live 16-Cell Matrix & Full Daly BMS Telemetry:** Individual millivolt bars, live `⚖️` 1A active balance cell indicators (`0x97`), total cycle count (`0x94`), live fault flags (`0x98`), internal OVP/UVP/OCP/temperature thresholds (`0x50–0x5F`), and Charge/Discharge MOSFET status.
+- **⚙️ Full Live WatchPower Inverter Menu (17 Settings):** Control Output Priority (`POP`), Charge Priority (`PCP`), Max Charge Current (`10A–110A`), Utility Charge Current (`MUCHGC`), Battery Type (`PBT`), AC Input Range (`PGR`), Bulk/Float/Cut-Off/Back-to-Grid/Back-to-Battery voltages, and `QFLAG` switches (Buzzer, Bypass, Power Saving, LCD Backlight).
+- **📈 30-Day & 24-Hour Energy Analytics:** NTP-synced real-time Watt-to-kWh integration stored in ESP32 NVS Flash, rendered as interactive HTML5 Canvas bar charts (PV Production, Home Load, Battery Charge/Discharge, Grid Bypass, Grid Charge).
+- **📡 Local Wi-Fi + Global MQTT + Wi-Fi OTA + Android APK:** Zero-latency LAN access (`http://192.168.1.140`), global remote access via `MQTT over WSS`, wireless firmware flashing (`/update`), and native Android WebView APK source.
+
+---
+
+## 🧰 Hardware & Software Bill of Materials (BOM)
+
+### Hardware Components
+| Component | Model / Specification | Purpose |
 | :--- | :--- | :--- |
-| **Mikrodenetleyici** | `ESP32-WROOM-32` (`ESP32-D0WD-V3`, 30/38 pin) | Ana beyin, Web sunucusu, MQTT istemcisi, FreeRTOS otomasyon |
-| **RS485 Modülü** | `HW-519-R4` (Otomatik Yön / Auto-Flow TTL ↔ RS485, 3.3V–5V) | Daly BMS RS485 portuyla `DE/RE` pini gerektirmeden haberleşme |
-| **RS232 Modülü** | `MAX3232` DB9 Dişi RS232 ↔ TTL Dönüştürücü (`3.3V` uyumlu) | Voltronic inverterin WatchPower RS232 portuyla haberleşme |
-| **İnverter Kablosu** | Standart `RJ45 → DB9` WatchPower Seri Kablosu | İnverter RS232 çıkışını MAX3232 modülüne bağlamak için |
-| **Akü & BMS** | `48V 280Ah (16S LiFePO4 — 14.3 kWh)` + `Daly 8-24S 1A Aktif Balans Smart BMS` | Enerji depolama ve RS485 (`0xA5` 13-byte) canlı hücre telemetrisi |
-| **Akıllı İnverter** | `5.5 kW (5500W / 48V / 120A MPPT)` Voltronic `PI30` Uyumlu | Solar MPPT şarj ve AC yük yönetimi |
-| **Solar Paneller** | `10 × 550W` (`5500 Wp`) Monokristal Panel Dizisi | Ana güneş enerjisi kaynağı |
-| **Besleme & Kablolama** | `5V 2A` USB Adaptör (ESP32 için) + Dişi-Dişi Dupont Kablolar + 2 Damar Bükülü RS485 Kablosu | Kararlı 3.3V/5V besleme ve parazitsiz seri hat |
+| **Microcontroller** | `ESP32-WROOM-32` (`ESP32-D0WD-V3`, 30/38-pin DevKit) | Core controller, Dual-Core FreeRTOS, Web Server, MQTT client |
+| **RS485 Transceiver** | `HW-519-R4` (Auto-Flow Direction Control TTL ↔ RS485, 3.3V–5V) | Wired Daly BMS RS485 interface (no manual `DE/RE` pin needed) |
+| **RS232 Transceiver** | `MAX3232` DB9 Female RS232 ↔ TTL Module (`3.3V` compatible) | Wired Voltronic WatchPower RS232 interface |
+| **Inverter Serial Cable** | Standard `RJ45 → DB9` WatchPower Serial Cable | Connects inverter RS232 port to `MAX3232` DB9 connector |
+| **Battery Pack & BMS** | `48V 280Ah (16S LiFePO4 — 14.3 kWh)` + `Daly 8–24S 1A Active Balance Smart BMS` | Energy storage & RS485 (`0xA5` 13-byte) live telemetry |
+| **Solar Inverter** | `5.5 kW (5500W / 48V / 120A MPPT)` Voltronic `PI30` Compatible | Solar MPPT charging and AC load management |
+| **Solar Array** | `10 × 550W` (`5500 Wp`) Monocrystalline Panels | Primary solar generation |
+| **Power & Wiring** | `5V 2A` USB PSU (for ESP32) + Female-to-Female Dupont wires + Twisted-pair RS485 cable | Stable power delivery and noise-immune serial lines |
 
-### Yazılım & Kütüphaneler
-| Yazılım / Araç | Sürüm / Açıklama |
+### Software & Libraries
+| Software / Library | Version / Notes |
 | :--- | :--- |
-| **Arduino IDE / Arduino CLI** | `esp32:esp32` Kart Paketi (`v3.x`) |
-| **PubSubClient** | `v2.8.0+` — Gerçek zamanlı MQTT haberleşmesi (`4096` byte tampon) |
-| **Dahili ESP32 Kütüphaneleri** | `WiFi`, `WebServer`, `Preferences` (NVS Flash), `ESPmDNS`, `Update` (Wi-Fi OTA), `time.h` (NTP) |
-| **Ön Yüz (Web / PWA / APK)** | Saf HTML5 + CSS3 + Vanilla JS + Canvas Grafik + `mqtt.min.js` (`v5.10.1` WSS) |
-| **Android APK Derleme** | Native Android `WebView` (`minSdk 24`, `targetSdk 34`), `OpenJDK 17`, `Android SDK Build-Tools 34` |
+| **Arduino IDE / Arduino CLI** | `esp32:esp32` Board Package (`v3.x`) |
+| **PubSubClient** | `v2.8.0+` — Real-time MQTT client (`4096`-byte buffer) |
+| **Built-in ESP32 Core Libraries** | `WiFi`, `WebServer`, `Preferences` (NVS), `ESPmDNS`, `Update` (Wi-Fi OTA), `time.h` (NTP) |
+| **Web / Mobile Frontend** | Zero-framework HTML5 + CSS3 + Vanilla JS + HTML5 Canvas + bundled `mqtt.min.js` (`v5.10.1` WSS) |
+| **Android APK Toolchain** | Native Android `WebView` (`minSdk 24`, `targetSdk 34`), `OpenJDK 17`, `Android SDK Build-Tools 34` |
 
 ---
 
-## 🗺️ Sistem Mimarisi ve Bağlantı Şeması
+## 🗺️ System Architecture & Wiring Schematics
 
-### 1. Genel Sistem Akış Diyagramı (Mermaid)
+### 1. System Architecture Diagram (Mermaid)
 
 ```mermaid
 flowchart LR
-    PV["☀️ 10 × 550W\nSolar Paneller\n(5500 Wp)"] --> INV["⚡ 5.5 kW Voltronic PI30\nAkıllı İnverter\n(120A MPPT / RS232)"]
-    BAT["🔋 48V 280Ah 16S LiFePO4\n(14.3 kWh)"] <--> BMS["🛡️ Daly 8-24S 1A\nAktif Balans BMS\n(RS485 @ 9600)"]
-    BMS <-->|Güç Hattı 48V| INV
+    PV["☀️ 10 × 550W\nSolar Array\n(5500 Wp)"] --> INV["⚡ 5.5 kW Voltronic PI30\nHybrid Inverter\n(120A MPPT / RS232)"]
+    BAT["🔋 48V 280Ah 16S LiFePO4\n(14.3 kWh)"] <--> BMS["🛡️ Daly 8-24S 1A\nActive Balance BMS\n(RS485 @ 9600)"]
+    BMS <-->|48V DC Power Bus| INV
 
-    BMS <-->|"RS485 A+ / B-\n(2 Damar Kablo)"| HW519["🔌 HW-519-R4\nAuto-Flow RS485\n(3.3V Besleme)"]
-    HW519 <-->|"Serial1 (9600 8N1)\nRXD→GPIO16 | TXD→GPIO17"| ESP["🧠 ESP32-WROOM-32\nDual-Core FreeRTOS\n(Sabit IP: 192.168.1.140)"]
+    BMS <-->|"RS485 A+ / B-\n(Twisted Pair)"| HW519["🔌 HW-519-R4\nAuto-Flow RS485\n(3.3V Powered)"]
+    HW519 <-->|"Serial1 (9600 8N1)\nRXD→GPIO16 | TXD→GPIO17"| ESP["🧠 ESP32-WROOM-32\nDual-Core FreeRTOS\n(Static IP: 192.168.1.140)"]
 
-    INV <-->|"RJ45-DB9 RS232\n(Pin 2/3 Çapraz)"| MAX3232["🔌 MAX3232 DB9\nRS232 ↔ TTL\n(3.3V Besleme)"]
+    INV <-->|"RJ45-DB9 RS232\n(Pin 2/3 Crossed)"| MAX3232["🔌 MAX3232 DB9\nRS232 ↔ TTL\n(3.3V Powered)"]
     MAX3232 <-->|"Serial2 (2400 8N1)\nTXD→GPIO19 | RXD→GPIO18"| ESP
 
-    ESP <-->|"Yerel Wi-Fi\nHTTP / API / OTA"| WEB["💻 Yerel Web Paneli\nhttp://192.168.1.140"]
+    ESP <-->|"Local Wi-Fi LAN\nHTTP API & OTA"| WEB["💻 Local Web Dashboard\nhttp://192.168.1.140"]
     ESP <-->|"TCP 1883\nEMQX MQTT"| MQTT(("☁️ MQTT Broker\nbroker.emqx.io"))
-    MQTT <-->|"WSS 8084\n4.5G / 5G"| APK["📱 Android APK\nAkıllı İnverter BMS"]
+    MQTT <-->|"WSS 8084\n4G / 5G"| APK["📱 Android APK\nRemote Monitor & Control"]
 ```
 
-### 2. Birebir Donanım Bağlantı Şeması (ASCII)
+### 2. Pin-by-Pin Hardware Wiring Schematic (ASCII)
 
 ```text
   ┌─────────────────────────┐             ┌──────────────────────────┐
   │   DALY 16S SMART BMS    │             │  5.5kW VOLTRONIC PI30    │
-  │   (RS485 Portu: A+, B-) │             │  İNVERTER (RJ45 RS232)   │
+  │   (RS485 Port: A+, B-)  │             │  INVERTER (RJ45 RS232)   │
   └──────────┬───┬──────────┘             └────────────┬─────────────┘
-          A+ │   │ B-                                  │ RJ45 → DB9 Kablo
-             │   │                                     │ (DB9 Pin 2 & 3 Çapraz)
+          A+ │   │ B-                                  │ RJ45 → DB9 Cable
+             │   │                                     │ (DB9 Pin 2 & 3 Crossed)
   ┌──────────▼───▼──────────┐             ┌────────────▼─────────────┐
-  │     HW-519-R4 RS485     │             │    MAX3232 DB9 MODÜL     │
-  │  (Otomatik Yön Akışlı)  │             │   (RS232 ↔ 3.3V TTL)     │
+  │     HW-519-R4 RS485     │             │    MAX3232 DB9 MODULE    │
+  │  (Auto-Flow Direction)  │             │   (RS232 ↔ 3.3V TTL)     │
   │  VCC  GND   RXD    TXD  │             │  VCC  GND   TXD    RXD   │
   └───┬────┬─────┬──────┬───┘             └───┬────┬─────┬──────┬────┘
       │    │     │      │                     │    │     │      │
@@ -102,160 +105,160 @@ flowchart LR
   │            (RX1)  (TX1)                            (RX2)  (TX2)  │
   │                                                                  │
   │                    ESP32-WROOM-32 DEVKIT                         │
-  │              [USB 5V 2A Adaptör ile Beslenir]                    │
+  │              [Powered via 5V 2A USB Power Supply]                │
   └──────────────────────────────────────────────────────────────────┘
 ```
 
-### 3. Detaylı Pin Bağlantı Tabloları
+### 3. Detailed Pinout Tables
 
 #### A) Daly BMS ↔ `HW-519-R4` (RS485) ↔ ESP32 (`Serial1` @ `9600 8N1`)
-| `HW-519-R4` Modül Pini | Bağlandığı Yer | Açıklama |
+| `HW-519-R4` Module Pin | Connected To | Notes |
 | :--- | :--- | :--- |
-| **`VCC`** | ESP32 **`3V3`** | **Önemli:** ESP32 lojik seviyesi için mutlaka **`3.3V`** ile besleyin (`5V` kullanmayın). |
-| **`GND`** | ESP32 **`GND`** | Ortak şase (toprak). |
-| **`RXD`** | ESP32 **`GPIO 16`** (`RX1`) | HW-519-R4 kartında etiket yönü düz çalışır (`RXD → GPIO16`). Firmware açılışta 3.3V boşta gerilimini de kontrol eder. |
-| **`TXD`** | ESP32 **`GPIO 17`** (`TX1`) | ESP32'den Daly BMS'e sorgu gönderim hattı. |
-| **`A+`** (Klemens) | Daly BMS RS485 **`A+`** | Diferansiyel pozitif veri hattı. |
-| **`B-`** (Klemens) | Daly BMS RS485 **`B-`** | Diferansiyel negatif veri hattı. |
+| **`VCC`** | ESP32 **`3V3`** | **Important:** Always power with **`3.3V`** to match ESP32 GPIO logic levels (do **not** use `5V`). |
+| **`GND`** | ESP32 **`GND`** | Common ground reference. |
+| **`RXD`** | ESP32 **`GPIO 16`** (`RX1`) | On `HW-519-R4`, silkscreen labels map straight (`RXD → GPIO16`). Firmware also auto-detects idle 3.3V line at boot. |
+| **`TXD`** | ESP32 **`GPIO 17`** (`TX1`) | Sends Daly `0xA5` query frames to the BMS. |
+| **`A+`** (Terminal) | Daly BMS RS485 **`A+`** | Differential RS485 positive line. |
+| **`B-`** (Terminal) | Daly BMS RS485 **`B-`** | Differential RS485 negative line. |
 
-> **Daly BMS Uygulama Ayarı:** Smart BMS Bluetooth uygulamasında haberleşme modunun **`RS485`** (Daly standart `0xA5` protokolü, `9600 baud`, Host `0x40`) olduğundan emin olun.
+> **Daly BMS App Setting:** In the Daly Smart BMS Bluetooth app, make sure the communication port is set to **`RS485`** (standard Daly `0xA5` protocol, `9600 baud`, Host `0x40`).
 
-#### B) Voltronic İnverter ↔ `MAX3232 DB9` (RS232) ↔ ESP32 (`Serial2` @ `2400 8N1`)
-| `MAX3232` Modül Pini | Bağlandığı Yer | Açıklama |
+#### B) Voltronic Inverter ↔ `MAX3232 DB9` (RS232) ↔ ESP32 (`Serial2` @ `2400 8N1`)
+| `MAX3232` Module Pin | Connected To | Notes |
 | :--- | :--- | :--- |
-| **`VCC`** | ESP32 **`3V3`** | **Önemli:** Mutlaka **`3.3V`** verin (`5V` ESP32 RX pinine zarar verebilir). |
-| **`GND`** | ESP32 **`GND`** | Ortak şase. |
-| **`TXD`** (veya `TX`) | ESP32 **`GPIO 19`** (`RX2`) | MAX3232'den ESP32'ye veri girişi (`3.3V` aktif hat). |
-| **`RXD`** (veya `RX`) | ESP32 **`GPIO 18`** (`TX2`) | ESP32'den invertere komut gönderimi. |
-| **DB9 Portu** | İnverter `RJ45 → DB9` Kablosu | **Kritik Not:** Çoğu düz DB9 kablosuyla veri gelmez; DB9 **Pin 2 (RX)** ile **Pin 3 (TX)** çapraz (Null-Modem) olmalıdır (`Pin 5 = GND`). |
+| **`VCC`** | ESP32 **`3V3`** | **Important:** Always power with **`3.3V`** (`5V` can damage ESP32 GPIO pins). |
+| **`GND`** | ESP32 **`GND`** | Common ground reference. |
+| **`TXD`** (or `TX`) | ESP32 **`GPIO 19`** (`RX2`) | Receives RS232→TTL data from inverter (`3.3V` idle-high line). |
+| **`RXD`** (or `RX`) | ESP32 **`GPIO 18`** (`TX2`) | Transmits WatchPower PI30 commands to inverter. |
+| **DB9 Connector** | Inverter `RJ45 → DB9` Cable | **Critical:** Most straight-through DB9 cables will receive 0 bytes. **DB9 Pin 2 (RX)** and **Pin 3 (TX)** must be crossed (Null-Modem), with **Pin 5 = GND**. |
 
 ---
 
-## 🛠️ Adım Adım Kurulum Rehberi
+## 🛠️ Step-by-Step Installation Guide
 
-### 1. Depoyu İndirin ve Gizli Ayar Dosyalarını Oluşturun
-Güvenlik nedeniyle kişisel Wi-Fi şifreniz ve özel MQTT kanalınız depoya dahil edilmez. Şablon dosyaları kopyalayarak kendi bilgilerinizi girin:
+### Step 1: Clone the Repository & Create Your Local Secret Files
+For security, personal Wi-Fi credentials and private MQTT topics are gitignored. Copy the example templates and fill in your own values:
 
-1. `esp32_daly_inverter_bridge/secrets.example.h` dosyasını aynı klasöre **`secrets.h`** adıyla kopyalayın ve düzenleyin:
+1. Copy `esp32_daly_inverter_bridge/secrets.example.h` to **`esp32_daly_inverter_bridge/secrets.h`** and edit it:
    ```cpp
    #pragma once
-   #define WIFI_SSID_CFG     "WIFI_ADINIZ_2.4G"
-   #define WIFI_PASS_CFG     "WIFI_SIFRENIZ"
-   #define MQTT_PREFIX_CFG   "dalyinv/KENDI_BENZERSIZ_IDNIZ"
+   #define WIFI_SSID_CFG     "YOUR_2.4G_WIFI_SSID"
+   #define WIFI_PASS_CFG     "YOUR_WIFI_PASSWORD"
+   #define MQTT_PREFIX_CFG   "dalyinv/YOUR_UNIQUE_SECRET_ID"
    ```
-   > **Güvenlik İpucu:** `MQTT_PREFIX_CFG` değerini kimsenin tahmin edemeyeceği rastgele bir kod yapın (örneğin `dalyinv/ev_9f4a7c2e81b3`) çünkü bu kanal inverter komutlarını kabul eder!
-2. Uzaktan erişim (APK / 4.5G) için `mobil_uygulama/mqtt_config.example.js` dosyasını **`mqtt_config.js`** olarak kopyalayıp aynı `MQTT_PREFIX_CFG` değerini yazın:
+   > **Security Tip:** Make `MQTT_PREFIX_CFG` a long, unpredictable random string (e.g., `dalyinv/home_9f4a7c2e81b3`) since it accepts live inverter & BMS control commands over the public EMQX broker.
+2. For remote 4G/5G APK access, copy `mobil_uygulama/mqtt_config.example.js` to **`mobil_uygulama/mqtt_config.js`** with the exact same `MQTT_PREFIX_CFG`:
    ```javascript
-   window.MQTT_PREFIX = 'dalyinv/KENDI_BENZERSIZ_IDNIZ';
+   window.MQTT_PREFIX = 'dalyinv/YOUR_UNIQUE_SECRET_ID';
    ```
-3. Sabit IP gerekiyorsa `esp32_daly_inverter_bridge.ino` içindeki `staticIP(192, 168, 1, 140)` ve `gateway(192, 168, 1, 1)` satırlarını kendi modem ağınıza göre güncelleyin.
+3. (Optional) Adjust `staticIP(192, 168, 1, 140)` and `gateway(192, 168, 1, 1)` in `esp32_daly_inverter_bridge.ino` to match your router's subnet.
 
-### 2. ESP32 Yazılımını Derleme ve Yükleme (Arduino IDE veya CLI)
+### Step 2: Compile & Flash ESP32 (Arduino IDE or CLI)
 
-#### Arduino IDE ile:
-1. **Board Manager** üzerinden **`esp32` by Espressif Systems (v3.x)** paketini kurun.
-2. **Library Manager** üzerinden **`PubSubClient`** (Nick O'Leary) kütüphanesini kurun.
-3. `esp32_daly_inverter_bridge/esp32_daly_inverter_bridge.ino` dosyasını açın.
-4. Kart olarak **`ESP32 Dev Module`**, port olarak ESP32'nin COM portunu seçip **Yükle (`→`)** butonuna basın.
+#### Option A — Arduino IDE:
+1. Install **`esp32` by Espressif Systems (`v3.x`)** via **Boards Manager**.
+2. Install **`PubSubClient`** by Nick O'Leary via **Library Manager**.
+3. Open `esp32_daly_inverter_bridge/esp32_daly_inverter_bridge.ino`.
+4. Select Board **`ESP32 Dev Module`**, pick your USB COM port, and click **Upload**.
 
-#### Arduino CLI ile (Tek Komut):
+#### Option B — Arduino CLI:
 ```powershell
 arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir ".\esp32_daly_inverter_bridge\build" ".\esp32_daly_inverter_bridge"
 arduino-cli upload -p COM3 --fqbn esp32:esp32:esp32 ".\esp32_daly_inverter_bridge"
 ```
 
-### 3. Kablosuz Yazılım Güncelleme (Wi-Fi OTA)
-İlk USB yüklemesinden sonra bir daha ESP32'yi yerinden sökmenize veya BOOT tuşuna basmanıza gerek yoktur:
+### Step 3: Wireless Firmware Updates (Wi-Fi OTA)
+After the first USB flash, you never need a USB cable or BOOT button again:
 ```powershell
 curl.exe -s --max-time 30 -F "update=@esp32_daly_inverter_bridge/build/esp32_daly_inverter_bridge.ino.bin" "http://192.168.1.140/update"
 ```
-Yanıt **`OK`** döndüğünde ESP32 5 saniye içinde yeni yazılımla otomatik yeniden başlar.
+When the server replies **`OK`**, the ESP32 automatically reboots into the new firmware within ~5 seconds.
 
-### 4. Web Arayüzü ve Android `.APK` Kullanımı
-- **Evde Yerel Wi-Fi:** Tarayıcıdan `http://192.168.1.140` veya `http://akilli-inverter.local` adresine girin. (Telefonda *"Ana Ekrana Ekle"* diyerek PWA uygulama olarak kullanabilirsiniz.)
-- **Native Android `.APK` Derleme:** `android_apk_src/` klasörü tam Android WebView kaynak kodunu içerir. `mobil_uygulama/index.html`, `mqtt.min.js` ve kişisel `mqtt_config.js` dosyalarını `android_apk_src/assets/` içine koyup `aapt2` + `d8` + `zipalign` + `apksigner` (veya Android Studio) ile kendi imzalı `.apk` paketinizi oluşturabilirsiniz.
+### Step 4: Web Dashboard & Native Android `.APK`
+- **Local LAN / PWA:** Open `http://192.168.1.140` or `http://akilli-inverter.local` on any phone or PC (tap *"Add to Home Screen"* for full-screen PWA mode).
+- **Building Your Own Signed Android `.APK`:** Full native WebView source code is in `android_apk_src/`. Copy `mobil_uygulama/index.html`, `mqtt.min.js`, and your private `mqtt_config.js` into `android_apk_src/assets/`, then build & sign with `aapt2` + `d8` + `zipalign` + `apksigner` (or Android Studio).
 
 ---
 
-## 🔋 Uygulanan Pil Ömrü & Termal Koruma Kuralları
+## 🔋 Battery Longevity & Thermal Protection Profiles
 
-### 1. 16S LiFePO4 Pil Ömrü Profili (10–15 Yıl / 6000–10000 Döngü)
-| Parametre | Varsayılan Değer | Açıklama |
+### 1. 16S LiFePO4 Longevity Profile (10–15 Years / 6,000–10,000 Cycles)
+| Parameter | Default Value | Purpose |
 | :--- | :---: | :--- |
-| **Bulk / Emilim Voltajı (`PCVV`)** | **`55.0 V`** (`3.437 V/hücre`) | Hücreleri aşırı voltaj stresine sokmadan sağlıklı dolum |
-| **Float / Tampon Voltajı (`PBFT`)** | **`53.6 V`** (`3.350 V/hücre`) | Gün içi akü dinlenme voltajı |
-| **Düşük Voltaj Kesme (`PSDV`)** | **`45.0 V`** (`2.812 V/hücre`) | Alt güvenlik tabanı |
-| **Günlük SoC Penceresi** | **`%20 – %92`** | `%92`'de şarj `0A` durur (`52.8V` geçici sınır), `%89`'da açılır |
-| **Şebekeye Geçiş / Aküye Dönüş** | **`%20` → `%30`** | Hücre `≤ 3.00 V` olursa da anında `POP00` (Şebeke) devreye girer |
-| **Acil Kış Şebeke Desteği** | **`%12` → `%20`** | `%12` altında `10A` şebeke şarjı açar (`PCP02`), `%20`'de `OSO` (`PCP03`) döner |
-| **Kademeli Şarj Hızı (280Ah)** | **`80A → 40A → 10A`** | `<%86`: `80A` (`~0.28C`), `%88+ / 3.42V`: `40A`, `%94+ / 3.47V`: `10A`, `≥3.55V`: acil fren |
-| **Daly 1A Aktif Balans (Önerilen)** | **`3.40 V / 15 mV`** | Smart BMS uygulamasından üst dizde (top-balance) ayarlanması önerilir |
+| **Bulk / Absorption Voltage (`PCVV`)** | **`55.0 V`** (`3.437 V/cell`) | Full usable charge without high-voltage stress |
+| **Float Voltage (`PBFT`)** | **`53.6 V`** (`3.350 V/cell`) | Gentle daytime resting voltage |
+| **Low DC Cut-Off (`PSDV`)** | **`45.0 V`** (`2.812 V/cell`) | Hardware safety floor |
+| **Daily Operating SoC Window** | **`20% – 92%`** | At `92%`, charging halts to `0A` (`52.8V` cap); re-enables at `89%` |
+| **Grid / Battery Switching** | **`20%` → `30%`** | Also switches to Grid (`POP00`) if any cell drops `≤ 3.00 V` |
+| **Emergency Winter Grid Support** | **`12%` → `20%`** | Enables `10A` utility support (`PCP02`) below `12%`, returns to Solar-Only (`PCP03`) at `20%` |
+| **Tapered Charge Curve (280Ah)** | **`80A → 40A → 10A`** | `<86%`: `80A` (`~0.28C`), `88% / 3.42V`: `40A`, `94% / 3.47V`: `10A`, `≥3.55V`: emergency brake |
+| **Daly 1A Active Balance (Recommended)** | **`3.40 V / 15 mV`** | Top-balancing above the flat LiFePO4 voltage plateau (configure via Smart BMS app) |
 
-### 2. İnverter 3 Kademeli Aşırı Isınma Koruması (`inv.invTemp`)
-Termal koruma **en yüksek öncelikle** çalışır; 45 saniyelik EEPROM bekleme süresini atlar ve BMS bağlantısı kopsa bile inverteri korur:
+### 2. 3-Stage Inverter Over-Temperature Protection (`inv.invTemp`)
+Thermal protection runs at **highest priority** (ignores the 45s cooldown on temperature escalation and stays active even if BMS disconnects):
 
-| Kademe | Tetikleme Sıcaklığı | Otomatik Müdahale | Normale Dönüş (Histerezis) |
+| Stage | Trigger Temperature | Automatic Action | Recovery Hysteresis |
 | :--- | :---: | :--- | :---: |
-| **Normal** | `< 58 °C` | Pil ömrü şarj eğrisi (`80A / 40A / 10A`) | — |
-| **Kademe 1 (Uyarı)** | `≥ 58 °C` | Şarj akımını anında **`40A`** ile sınırlar | `≤ 54 °C` |
-| **Kademe 2 (Yüksek)** | `≥ 64 °C` | Şarj akımını anında **`10A`** ile sınırlar | `≤ 59 °C` |
-| **Kademe 3 (ACİL BYPASS)** | **`≥ 70 °C`** | Anında **`POP00` (Şebeke Bypass) + `10A`** gönderir | **`≤ 60 °C`** → Otomatik `POP02` (SBU) |
+| **Normal** | `< 58 °C` | Normal battery-longevity charging (`80A / 40A / 10A`) | — |
+| **Stage 1 (Throttle-1)** | `≥ 58 °C` | Immediately caps charge current to **`40A`** | `≤ 54 °C` |
+| **Stage 2 (Throttle-2)** | `≥ 64 °C` | Immediately caps charge current to **`10A`** | `≤ 59 °C` |
+| **Stage 3 (EMERGENCY BYPASS)** | **`≥ 70 °C`** | Immediately forces **`POP00` (Grid Bypass) + `10A`** | **`≤ 60 °C`** → Auto-returns to `POP02` (SBU) |
 
 ---
 
-## 📡 Yerel HTTP API & MQTT Uç Noktaları
+## 📡 HTTP REST API & MQTT Topics
 
-| Uç Nokta / Konu | Açıklama |
+| Endpoint / Topic | Description |
 | :--- | :--- |
-| `GET /api/status` | BMS, 16 hücre, Daly iç ayarları (`bmsSet`), İnverter canlı verisi, `QPIRI`/`QFLAG`, termal durum ve konfigürasyon JSON'ı |
-| `GET /api/stats` | Bugünkü 24 saatlik ve son 30 günlük kWh enerji istatistikleri |
-| `GET /api/cmd?c=<KOMUT>` | İnverter komutu (`POP02`, `PCP03`, `MNCHGC0080`, `PCVV55.0` vb.) veya BMS komutu (`BMS:CHGMOS:1`, `BMS:BAL:3400:15`) |
-| `GET /api/cfg?...` | Tüm otomasyon ve termal koruma eşiklerini NVS Flash'a kalıcı kaydeder |
-| `GET /api/apply_lifepo4` | Tek tıkla 16S LiFePO4 temel voltaj profilini (`PBT02`, `PCVV55.0`, `PBFT53.6`, `PSDV45.0`, `PBCV46.0`, `PBDV53.0`) yazar |
-| `GET /api/bms_probe` | HW-519-R4 RS485 canlı pin/protokol (`0x40`/`0x80`/Modbus) teşhis aracı |
-| `GET /api/hunt` | İnverter RS232 otomatik protokol ve baud tarayıcı (`PI30`/`PI18`/`Modbus`) |
-| `POST /update` | Kablosuz Wi-Fi OTA `.bin` yazılım yükleme uç noktası |
-| `MQTT: <PREFIX>/status` | 3 saniyede bir retained tam telemetri yayını |
-| `MQTT: <PREFIX>/stats` | 12 saniyede bir retained enerji istatistik yayını |
-| `MQTT: <PREFIX>/cmd` & `/cfg` | Mobil APK'dan uzaktan komut ve ayar yazma kanalları |
+| `GET /api/status` | Full JSON telemetry: Daly BMS + 16 cells + `bmsSet`, Inverter live data + `QPIRI`/`QFLAG`, thermal state, and config |
+| `GET /api/stats` | Today's 24-hour curve and rolling 30-day kWh energy statistics |
+| `GET /api/cmd?c=<CMD>` | Sends inverter command (`POP02`, `PCP03`, `MNCHGC0080`, `PCVV55.0`, etc.) or BMS command (`BMS:CHGMOS:1`, `BMS:BAL:3400:15`) |
+| `GET /api/cfg?...` | Persists automation & thermal thresholds (`tWarn`, `tHigh`, `tByp`, `maxS`, `socG`, `socB`, etc.) into NVS Flash |
+| `GET /api/apply_lifepo4` | One-click writes the complete 16S LiFePO4 voltage profile (`PBT02`, `PCVV55.0`, `PBFT53.6`, `PSDV45.0`, `PBCV46.0`, `PBDV53.0`) |
+| `GET /api/bms_probe` | Live `HW-519-R4` RS485 pin idle-voltage & protocol diagnostic tool (`0x40` / `0x80` / Modbus) |
+| `GET /api/hunt` | Multi-baud RS232 protocol hunter (`PI30` / `PI18` / Megatec / Modbus) |
+| `POST /update` | Wireless Wi-Fi OTA `.bin` firmware upload endpoint |
+| `MQTT: <PREFIX>/status` | Retained live JSON status published every 3 seconds |
+| `MQTT: <PREFIX>/stats` | Retained 30-day/24-hour energy JSON published every 12 seconds |
+| `MQTT: <PREFIX>/cmd` & `/cfg` | Remote command and configuration topics for the Android APK |
 
 ---
 
-## 🔧 Gerçek Kurulumdan Önemli Teknik Notlar (Sorun Giderme)
+## 🔧 Real-World Field Notes & Troubleshooting
 
-1. **80A–110A Şarj Komutu (`MNCHGC0080` / `MNCHGC0110`):** 5.5 kW Voltronic PI30 inverterler 3 haneli `MCHGC080` veya `MNCHGC100` komutuna `(NAK` döner; **4 haneli `MNCHGC0080`..`MNCHGC0110`** formatını zorunlu tutar (`setInverterChargeAmp()` bunu otomatik halleder).
-2. **Voltronic CRC16 Byte'larının JSON'ı Bozması:** Bazı `QPIRI` yanıtlarının sonundaki 2 ham CRC16 byte'ı `0x22` (`"`) karakterine denk gelip JSON'ı bozabilir; firmware son 2 ham byte'ı doğrudan uzunluktan düşerek bu sorunu kesin olarak çözer.
-3. **Daly BMS RS485 Yazma Kilidi:** Daly'nin bazı aktif balanslı yeni firmware sürümleri RS485 üzerinden `0x50–0x5F` tüm ayarları okuturken, `0x1F` gibi iç parametre yazımlarını güvenlik kilidi nedeniyle reddedebilir; bu durumda 1A balans başlama voltajını (`3.40V / 15mV`) Smart BMS Bluetooth uygulamasından (şifre `123456`) 5 saniyede değiştirebilirsiniz.
-4. **EEPROM Koruma Kuralı:** İnverter EEPROM ömrünü korumak için normal otomasyon komutları arasında en az **45 saniye** beklenir ve yalnızca değer gerçekten değiştiğinde komut gönderilir.
+1. **80A–110A Charge Command Format (`MNCHGC0080`–`MNCHGC0110`):** Many 5.5 kW Voltronic PI30 inverters reject 3-digit `MCHGC080`/`MNCHGC100` with `(NAK` and strictly require the **4-digit `MNCHGC0%03d`** format (`010`–`110` in `10A` steps). `setInverterChargeAmp()` handles this automatically.
+2. **Voltronic CRC16 Bytes Breaking JSON:** Raw Voltronic responses end with 2 binary CRC16 bytes that occasionally equal `0x22` (`"`), breaking naive string parsing. This firmware buffers raw bytes up to `\r` and strips the exact last 2 raw CRC bytes before parsing ASCII.
+3. **Daly BMS RS485 Config Write Lock:** While Daly RS485 reads all telemetry (`0x90–0x98`) and internal protection settings (`0x50–0x5F`) reliably, newer active-balance Daly firmware revisions reject unsigned RS485 writes (`0x1F`) without an engineering unlock sequence. Adjust `1A Balance Start Voltage` (`3.40V / 15mV`) directly in the Smart BMS Bluetooth app (default PIN `123456`).
+4. **EEPROM Protection:** Normal automation enforces a minimum **45-second cooldown** and only sends commands when target state actually changes (thermal escalations and explicit user config saves bypass the cooldown for instant response).
 
 ---
 
-## 📁 Proje Klasör Yapısı
+## 📁 Project Structure
 
 ```text
-├── README.md                                  # Bu dokümantasyon ve donanım şeması
-├── .gitignore                                 # Şifre, MQTT kanalı, keystore ve derleme çıktıları hariç
+├── README.md                                  # Project documentation & wiring schematics
+├── .gitignore                                 # Excludes secrets, keystores, APKs, and build artifacts
 ├── esp32_daly_inverter_bridge/
-│   ├── esp32_daly_inverter_bridge.ino         # Ana Dual-Core ESP32 firmware
-│   ├── energy_stats.h                         # NTP + 30 günlük / 24 saatlik kWh NVS motoru
-│   ├── web_ui.h                               # ESP32 PROGMEM gömülü Web arayüzü
-│   └── secrets.example.h                      # Wi-Fi & MQTT şablonu (secrets.h olarak kopyalayın)
+│   ├── esp32_daly_inverter_bridge.ino         # Main Dual-Core ESP32 firmware
+│   ├── energy_stats.h                         # NTP + 30-day / 24-hour kWh NVS storage engine
+│   ├── web_ui.h                               # Embedded PROGMEM Web UI header
+│   └── secrets.example.h                      # Wi-Fi & MQTT template (copy to secrets.h)
 ├── mobil_uygulama/
-│   ├── index.html                             # Mobil & Masaüstü tek sayfa kontrol arayüzü
-│   ├── mqtt.min.js                            # Çevrimdışı paketlenmiş MQTT.js istemcisi
-│   ├── mqtt_config.example.js                 # Uzaktan MQTT kanalı şablonu
-│   └── manifest.json                          # PWA uygulama manifesti
+│   ├── index.html                             # Responsive Web / PWA / APK dashboard
+│   ├── mqtt.min.js                            # Bundled offline MQTT.js client
+│   ├── mqtt_config.example.js                 # Remote MQTT topic template (copy to mqtt_config.js)
+│   └── manifest.json                          # PWA manifest
 └── android_apk_src/
-    ├── AndroidManifest.xml                    # Android WebView APK manifesti
+    ├── AndroidManifest.xml                    # Native Android WebView manifest
     ├── src/com/kaan/dalyinverter/MainActivity.java
-    ├── res/                                   # Uygulama simgeleri
-    └── assets/                                # APK içine paketlenen web dosyaları
+    ├── res/                                   # App launcher icon resources
+    └── assets/                                # Bundled web UI assets for APK compilation
 ```
 
 ---
 
-## ⚠️ Güvenlik ve Sorumluluk Reddi
+## ⚠️ Safety Disclaimer
 
-- `48V` DC batarya bankaları ve `230V` AC inverter hatları yüksek akım ve elektrik çarpması riski taşır. Tüm bağlantıları sigorta/kesici kapalıyken yapın.
-- `HW-519-R4` ve `MAX3232` modüllerini ESP32'ye mutlaka **`3.3V`** (`3V3`) pininden besleyin.
-- Kişisel `secrets.h`, `mqtt_config.js` ve Android `.keystore` dosyalarınızı asla herkese açık depolara yüklemeyin.
+- `48V` DC battery banks can deliver lethal fault currents and `230V` AC inverter outputs carry shock hazards. Always isolate DC/AC breakers before wiring.
+- Power both `HW-519-R4` and `MAX3232` strictly from the ESP32 **`3V3`** (`3.3V`) rail.
+- Never commit `secrets.h`, `mqtt_config.js`, or private Android `.keystore` files to public repositories.
