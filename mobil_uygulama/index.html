@@ -266,49 +266,51 @@
   </div>
 
   <div class="btns" style="margin-top:12px">
-    <button class="pur" onclick="applyLiFePO4()">⚡ Tek Tuşla 16S LiFePO4 Pil Ömrü Profilini Uygula (55.0 / 53.6 / 45 / 46V)</button>
+    <button class="pur" onclick="applyLiFePO4()">⚡ Tek Tuşla 16S LiFePO4 Boost Profilini Uygula (56.8 / 56.0 / 45 / 46V)</button>
   </div>
 </div>
 
-<!-- AKILLI OTOMASYON AYARLARI (PİL ÖMRÜ + TERMAL BYPASS) -->
+<!-- AKILLI OTOMASYON AYARLARI (BOOST & CUT + TERMAL BYPASS) -->
 <div class="card">
-  <h3><span>🤖 Pil Ömrü &amp; Termal Koruma Otomasyonu</span><span id="capBadge" class="pill ok">Üst Sınır: %92</span></h3>
+  <h3><span>🤖 Boost &amp; Cut + Termal Koruma Otomasyonu</span><span id="capBadge" class="pill ok">Üst Sınır: %90</span></h3>
 
-  <div class="sec-lbl" style="margin-top:2px"><span>🛑 Maksimum Şarj Sınırı (Akü Bu Yüzdeyi Geçmez!)</span><small id="lblMaxSoc">%92</small></div>
+  <div class="sec-lbl" style="margin-top:2px"><span>🛑 Maksimum Şarj Sınırı (Akü Bu Yüzdeyi Geçmez!)</span><small id="lblMaxSoc">%90</small></div>
   <div class="btns" style="margin-bottom:10px">
     <button id="btnCap80" onclick="setMaxSoc(80)">%80</button>
-    <button id="btnCap90" onclick="setMaxSoc(90)">%90</button>
-    <button id="btnCap92" onclick="setMaxSoc(92)">%92 (Ömür)</button>
+    <button id="btnCap90" onclick="setMaxSoc(90)">%90 (Ömür)</button>
+    <button id="btnCap92" onclick="setMaxSoc(92)">%92</button>
     <button id="btnCap95" onclick="setMaxSoc(95)">%95</button>
     <button id="btnCap100" onclick="setMaxSoc(100)">%100 (Tam)</button>
   </div>
 
-  <div class="sec-lbl" style="margin-top:6px"><span>🌡️ İnverter Aşırı Isınma Koruması (Termal Kısma + Bypass)</span><span id="thermBadge" class="pill ok">Normal</span></div>
+  <div class="sec-lbl" style="margin-top:6px"><span>🌡️ İnverter Aşırı Isınma Koruması (PI30 Termal Kısma + Bypass)</span><span id="thermBadge" class="pill ok">Normal</span></div>
 
   <div class="plan-box">
-    <div><b>🔋 Pil Ömrü Penceresi (%20–%92):</b> Akü <b>%92</b> olunca şarj <b>0A</b> durur (paneller evi besler); <b>%20</b> (veya hücre &le;3.00V) olunca <b>Şebekeye (UTI)</b> geçer &rarr; <b>%30</b> olunca <b>Aküye (SBU)</b> döner.</div>
-    <div style="margin-top:4px"><b>☀️ Sağlıklı Şarj Eğrisi (0.28C):</b> <b>&lt;%86</b> iken <span class="w">80A (~4.3 kW)</span> &rarr; <b>%88+ / 3.42V</b> olunca <span class="w">40A</span> &rarr; <b>%94+ / 3.47V</b> olunca <span class="w">10A</span> (Daly 1A balans).</div>
-    <div style="margin-top:4px"><b>🌡️ İnverter Termal Koruma:</b> İnverter <b>&ge;58°C</b> olunca şarjı <span class="w">40A</span>'e, <b>&ge;64°C</b> olunca <span class="w">10A</span>'e kısar; <b>&ge;70°C</b> olursa <b>ACİL ŞEBEKE BYPASS (POP00 + 10A)</b> atar! <b>&le;60°C</b> soğuyunca otomatik SBU'ya döner.</div>
-    <div style="margin-top:4px"><b>🛡️ Acil Kış Koruması:</b> Akü <b>&le;%12</b> olursa şebekeden <b>10A</b> destek açar &rarr; <b>&ge;%20</b> olunca tekrar <b>Sadece Güneş (OSO)</b> olur.</div>
+    <div><b>⚡ 1. Aşama — Hızlı Boost Şarj (&lt;%90 &amp; Hücre &lt;3.45V):</b> İnverter <b>56.8V Bulk / 56.0V Float</b> + <span class="w">100A</span> ile kablo düşümünü ve Voltronic erken-Float hatasını tamamen aşar, paneller tam hız basar!</div>
+    <div style="margin-top:4px"><b>⚖️ 2. Aşama — Otomatik Voltaj Düşürme (Hücre &ge;3.45V):</b> Hücreler tepeye yaklaşınca voltajı otomatik <b>55.2V / 54.0V</b>'a, akımı <span class="w">40A</span> (&ge;3.49V &rarr; <span class="w">10A</span>)'e düşürür.</div>
+    <div style="margin-top:4px"><b>🛑 3. Aşama — %90 Kesin Durdurma (veya Hücre &ge;3.51V):</b> Anında <b>52.8V / 0A</b> keser (paneller evi besler); <b>%87</b>'de tekrar tam hız açar. <b>%20</b>'de Şebeke (UTI) &rarr; <b>%30</b>'da Akü (SBU).</div>
+    <div style="margin-top:4px"><b>🌡️ PI30 Termal Koruma:</b> İnverter <b>&ge;65°C</b> &rarr; <span class="w">40A</span>, <b>&ge;72°C</b> &rarr; <span class="w">10A</span>, <b>&ge;78°C</b> &rarr; <b>ACİL ŞEBEKE BYPASS (POP00 + 10A)</b>! <b>&le;65°C</b> soğuyunca otomatik SBU'ya döner.</div>
   </div>
 
   <div class="row"><span>Otomatik BMS &amp; Termal Yönetim</span><input class="switch" type="checkbox" id="cAuto" checked></div>
-  <div class="row"><span>🛑 Maksimum Şarj Sınırı (% Geçmesin)</span><input type="number" id="cMaxS" value="92" min="50" max="100" step="1"></div>
+  <div class="row"><span>🛑 Maksimum Şarj Sınırı (% Geçmesin)</span><input type="number" id="cMaxS" value="90" min="50" max="100" step="1"></div>
+  <div class="row"><span>⚡ Boost Bulk Voltajı (PCVV) (V)</span><input type="number" id="cBulkV" value="56.8" min="52.0" max="57.2" step="0.1"></div>
+  <div class="row"><span>⚡ Boost Float Voltajı (PBFT) (V)</span><input type="number" id="cFloatV" value="56.0" min="51.0" max="56.8" step="0.1"></div>
   <div class="row"><span>Şebekeye Geçiş (% SoC Altı)</span><input type="number" id="cSocG" value="20" step="1"></div>
   <div class="row"><span>Aküye Dönüş (% SoC Üstü)</span><input type="number" id="cSocB" value="30" step="1"></div>
   <div class="row"><span>Acil Şebeke Şarjı Aç (% Altı)</span><input type="number" id="cChgOn" value="12" step="1"></div>
   <div class="row"><span>Şebeke Şarjını Kapat (% Üstü)</span><input type="number" id="cChgOff" value="20" step="1"></div>
-  <div class="row"><span>Tam Güç Şarj Hızı (Pil Ömrü) (A)</span><input type="number" id="cMaxA" value="80" step="10"></div>
+  <div class="row"><span>Hızlı Boost Şarj Akımı (A)</span><input type="number" id="cMaxA" value="100" step="10"></div>
   <div class="row"><span>Yumuşatma / Termal-1 Hızı (A)</span><input type="number" id="cMidA" value="40" step="10"></div>
   <div class="row"><span>Balans / Termal-2 Hızı (A)</span><input type="number" id="cBalA" value="10" step="10"></div>
-  <div class="row"><span>Yavaşlama Hücre Eşiği (V)</span><input type="number" id="cTap1" value="3.42" step="0.01"></div>
-  <div class="row"><span>Balans Hücre Eşiği (V)</span><input type="number" id="cTap2" value="3.47" step="0.01"></div>
-  <div class="row"><span>🌡️ İnv. Kademe-1 Kısma → 40A (°C)</span><input type="number" id="cTWarn" value="58" min="40" max="75" step="1"></div>
-  <div class="row"><span>🔥 İnv. Kademe-2 Kısma → 10A (°C)</span><input type="number" id="cTHigh" value="64" min="45" max="80" step="1"></div>
-  <div class="row"><span>🚨 İnv. Acil Şebeke Bypass (°C)</span><input type="number" id="cTByp" value="70" min="50" max="85" step="1"></div>
+  <div class="row"><span>Voltaj/Akım Düşürme Hücre Eşiği (V)</span><input type="number" id="cTap1" value="3.45" step="0.01"></div>
+  <div class="row"><span>1A Balans Hücre Eşiği (V)</span><input type="number" id="cTap2" value="3.49" step="0.01"></div>
+  <div class="row"><span>🌡️ İnv. Kademe-1 Kısma → 40A (°C)</span><input type="number" id="cTWarn" value="65" min="45" max="78" step="1"></div>
+  <div class="row"><span>🔥 İnv. Kademe-2 Kısma → 10A (°C)</span><input type="number" id="cTHigh" value="72" min="50" max="84" step="1"></div>
+  <div class="row"><span>🚨 İnv. Acil Şebeke Bypass (°C)</span><input type="number" id="cTByp" value="78" min="55" max="90" step="1"></div>
 
   <div class="btns" style="margin-top:12px">
-    <button class="act" onclick="saveCfg()">💾 Otomasyon &amp; Termal Kuralları ESP32'ye Kaydet</button>
+    <button class="act" onclick="saveCfg()">💾 Boost &amp; Termal Kuralları ESP32'ye Kaydet</button>
   </div>
 </div>
 
@@ -606,6 +608,8 @@ function renderData(d){
   if(firstCfg && c.socGrid !== undefined){
     document.getElementById('cAuto').checked = !!c.auto;
     if(c.maxSoc !== undefined) document.getElementById('cMaxS').value = Math.round(Number(c.maxSoc));
+    if(c.bulkV  !== undefined) document.getElementById('cBulkV').value  = Number(c.bulkV).toFixed(1);
+    if(c.floatV !== undefined) document.getElementById('cFloatV').value = Number(c.floatV).toFixed(1);
     document.getElementById('cSocG').value   = c.socGrid;
     document.getElementById('cSocB').value   = c.socBat;
     if(c.socChgOn  !== undefined) document.getElementById('cChgOn').value  = c.socChgOn;
@@ -658,10 +662,10 @@ function saveBmsBal(){
 }
 
 async function applyLiFePO4(){
-  if(!confirm('İnvertere 16S LiFePO4 Pil Ömrü (Bulk: 55.0V, Float: 53.6V, Kesme: 45.0V, Şebeke: 46.0V, Akü: 53.0V) profili yazılsın mı?')) return;
+  if(!confirm('İnvertere 16S LiFePO4 Boost & Cut (Bulk: 56.8V, Float: 56.0V, Kesme: 45.0V, Şebeke: 46.0V, Akü: 53.0V) profili yazılsın mı?')) return;
   if(IS_LOCAL_ESP){
     await fetch('/api/apply_lifepo4');
-    toast('16S LiFePO4 Pil Ömrü Profili Yazıldı!');
+    toast('16S LiFePO4 Boost Profili Yazıldı!');
     setTimeout(pollLocal, 800);
     return;
   }
@@ -674,7 +678,7 @@ function setMaxSoc(val){
 }
 
 async function saveCfg(){
-  const qs = `auto=${document.getElementById('cAuto').checked?1:0}&maxS=${document.getElementById('cMaxS').value}&socG=${document.getElementById('cSocG').value}&socB=${document.getElementById('cSocB').value}&chgOn=${document.getElementById('cChgOn').value}&chgOff=${document.getElementById('cChgOff').value}&maxA=${document.getElementById('cMaxA').value}&midA=${document.getElementById('cMidA').value}&balA=${document.getElementById('cBalA').value}&tap1=${document.getElementById('cTap1').value}&tap2=${document.getElementById('cTap2').value}&tWarn=${document.getElementById('cTWarn').value}&tHigh=${document.getElementById('cTHigh').value}&tByp=${document.getElementById('cTByp').value}`;
+  const qs = `auto=${document.getElementById('cAuto').checked?1:0}&maxS=${document.getElementById('cMaxS').value}&bulkV=${document.getElementById('cBulkV').value}&floatV=${document.getElementById('cFloatV').value}&socG=${document.getElementById('cSocG').value}&socB=${document.getElementById('cSocB').value}&chgOn=${document.getElementById('cChgOn').value}&chgOff=${document.getElementById('cChgOff').value}&maxA=${document.getElementById('cMaxA').value}&midA=${document.getElementById('cMidA').value}&balA=${document.getElementById('cBalA').value}&tap1=${document.getElementById('cTap1').value}&tap2=${document.getElementById('cTap2').value}&tWarn=${document.getElementById('cTWarn').value}&tHigh=${document.getElementById('cTHigh').value}&tByp=${document.getElementById('cTByp').value}`;
   if(IS_LOCAL_ESP){
     await fetch('/api/cfg?' + qs);
     toast('Otomasyon ve termal kurallar kaydedildi!');

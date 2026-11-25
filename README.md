@@ -21,14 +21,15 @@ A **100% wired industrial ESP32 Dual-Core (FreeRTOS)** automation bridge that co
 - **🧠 Dual-Core FreeRTOS Architecture:**
   - **Core 0:** Daly RS485 polling, Voltronic RS232 polling, NTP kWh energy integrator, battery longevity & thermal automation, and MQTT publishing.
   - **Core 1:** Dedicated `100%` to the local Web Server & REST API (`~20 ms` response time, zero UI lag).
-- **🔋 10–15 Year LiFePO4 Battery Longevity Profile (`20% – 92%`):**
-  - **Configurable Max SoC Charge Cap** (default `92%`, one-tap `80% / 90% / 92% / 95% / 100%`): Temporarily lowers Bulk/Float to `52.8V` so solar panels continue powering household loads while putting **`0A`** into the battery; resumes automatically at `maxSoc - 3%`.
-  - **Multi-Stage Tapered Charging (`80A → 40A → 10A`):** Gentle `~0.28C` bulk charge (`80A`), tapering down at `88% / 3.42V` (`40A`) and `94% / 3.47V` (`10A`) so the Daly 1A active balancer can effortlessly top-balance cells (`3.55V` emergency cell brake).
-  - **True SoC & Lowest-Cell Switching:** Automatically switches between **SBU (Battery + Solar)** and **UTI (Utility Grid)** based on real BMS `% SoC` and minimum cell voltage, plus optional winter emergency grid top-up (`12% → 20%`).
-- **🌡️ 3-Stage Inverter Over-Temperature Throttling & Emergency Grid Bypass:**
-  - `≥ 58 °C` → Immediately throttles charge current to **`40A`** (recovers at `≤ 54 °C`).
-  - `≥ 64 °C` → Immediately throttles charge current to **`10A`** (recovers at `≤ 59 °C`).
-  - `≥ 70 °C` → **EMERGENCY THERMAL BYPASS:** Immediately forces **`POP00` (Utility Grid Bypass) + `10A` charge**, removing AC load stress from the inverter's IGBTs/MOSFETs without interrupting household power. Automatically returns to **`POP02` (SBU)** once cooled to **`≤ 60 °C`** (and battery `≥ 30%`).
+- **🔋 3-Stage Dynamic "Boost & Cut" Charging + Longevity Profile (`20% – 90%`):**
+  - **Stage 1 — Fast Boost (`< 90%` & `maxCell < 3.45V`):** Drives inverter at **`56.8V Bulk / 56.0V Float` + `100A`** (`~0.35C`) — completely eliminates DC cable voltage-drop throttling and the notorious Voltronic PI30 *"Premature Float Bug"* so solar panels deliver 100% full speed!
+  - **Stage 2 — Automatic Voltage & Current Step-Down (`maxCell ≥ 3.45V`):** Automatically drops inverter targets to **`55.2V / 54.0V`** and **`40A`** (`≥ 3.49V` → **`10A`**) so the Daly 1A active balancer top-balances cells smoothly without ever hitting BMS OVP (`3.60V`).
+  - **Stage 3 — Hard Cut-Off (`SoC ≥ 90%` or `maxCell ≥ 3.51V`):** Immediately drops Bulk/Float to **`52.8V` + `10A` (`0A` battery current)** so solar continues feeding household loads while the battery rests; automatically resumes Boost at `maxSoc - 3%` (`87%`).
+  - **True SoC & Lowest-Cell Switching:** Switches between **SBU (Battery + Solar)** and **UTI (Utility Grid)** based on real BMS `% SoC` (`20% → 30%`) and minimum cell voltage (`≤ 3.00V`), plus winter emergency grid top-up (`12% → 20%`).
+- **🌡️ 3-Stage Inverter Over-Temperature Throttling & Emergency Grid Bypass (Voltronic PI30 Heatsink Tuned):**
+  - `≥ 65 °C` → Immediately throttles charge current to **`40A`** (recovers at `≤ 60 °C`).
+  - `≥ 72 °C` → Immediately throttles charge current to **`10A`** (recovers at `≤ 66 °C`).
+  - `≥ 78 °C` → **EMERGENCY THERMAL BYPASS:** Immediately forces **`POP00` (Utility Grid Bypass) + `10A` charge**, removing AC load stress from the inverter's IGBTs/MOSFETs 12–20 °C before factory `Error 02` (`90–100 °C`) shutdown. Automatically returns to **`POP02` (SBU)** once cooled to **`≤ 65 °C`** (and battery `≥ 30%`).
   - Runs at **highest priority** — bypasses the 45s EEPROM cooldown and operates even if the BMS is momentarily offline.
 - **📊 Live 16-Cell Matrix & Full Daly BMS Telemetry:** Individual millivolt bars, live `⚖️` 1A active balance cell indicators (`0x97`), total cycle count (`0x94`), live fault flags (`0x98`), internal OVP/UVP/OCP/temperature thresholds (`0x50–0x5F`), and Charge/Discharge MOSFET status.
 - **⚙️ Full Live WatchPower Inverter Menu (17 Settings):** Control Output Priority (`POP`), Charge Priority (`PCP`), Max Charge Current (`10A–110A`), Utility Charge Current (`MUCHGC`), Battery Type (`PBT`), AC Input Range (`PGR`), Bulk/Float/Cut-Off/Back-to-Grid/Back-to-Battery voltages, and `QFLAG` switches (Buzzer, Bypass, Power Saving, LCD Backlight).
@@ -182,27 +183,27 @@ When the server replies **`OK`**, the ESP32 automatically reboots into the new f
 
 ## 🔋 Battery Longevity & Thermal Protection Profiles
 
-### 1. 16S LiFePO4 Longevity Profile (10–15 Years / 6,000–10,000 Cycles)
+### 1. 16S LiFePO4 "Boost & Cut" Dynamic Profile (Fast Solar Charge + 10–15 Year Longevity)
 | Parameter | Default Value | Purpose |
 | :--- | :---: | :--- |
-| **Bulk / Absorption Voltage (`PCVV`)** | **`55.0 V`** (`3.437 V/cell`) | Full usable charge without high-voltage stress |
-| **Float Voltage (`PBFT`)** | **`53.6 V`** (`3.350 V/cell`) | Gentle daytime resting voltage |
+| **Stage 1 — Boost Bulk / Float (`PCVV / PBFT`)** | **`56.8 V / 56.0 V`** | Overcomes DC cable drop & fixes Voltronic's Premature Float Bug for full MPPT speed (`< 90%` & `maxCell < 3.45V`) |
+| **Stage 2 — Soften / Balance Voltages** | **`55.2 V / 54.0 V`** | Automatically stepped down as soon as any cell reaches `≥ 3.45V` (`40A`, then `10A` at `≥ 3.49V`) |
+| **Stage 3 — Hard Cap Cut-Off** | **`52.8 V / 52.8 V (0A)`** | Triggered at **`90% SoC`** or **`maxCell ≥ 3.51V`**; solar feeds home loads while battery rests (`87%` resume) |
 | **Low DC Cut-Off (`PSDV`)** | **`45.0 V`** (`2.812 V/cell`) | Hardware safety floor |
-| **Daily Operating SoC Window** | **`20% – 92%`** | At `92%`, charging halts to `0A` (`52.8V` cap); re-enables at `89%` |
 | **Grid / Battery Switching** | **`20%` → `30%`** | Also switches to Grid (`POP00`) if any cell drops `≤ 3.00 V` |
 | **Emergency Winter Grid Support** | **`12%` → `20%`** | Enables `10A` utility support (`PCP02`) below `12%`, returns to Solar-Only (`PCP03`) at `20%` |
-| **Tapered Charge Curve (280Ah)** | **`80A → 40A → 10A`** | `<86%`: `80A` (`~0.28C`), `88% / 3.42V`: `40A`, `94% / 3.47V`: `10A`, `≥3.55V`: emergency brake |
+| **Fast Charge Current (`280Ah`)** | **`100A → 40A → 10A`** | `100A` (`~0.35C`) full-speed solar harvest; steps down at `3.45V` / `3.49V` / `3.55V` |
 | **Daly 1A Active Balance (Recommended)** | **`3.40 V / 15 mV`** | Top-balancing above the flat LiFePO4 voltage plateau (configure via Smart BMS app) |
 
-### 2. 3-Stage Inverter Over-Temperature Protection (`inv.invTemp`)
-Thermal protection runs at **highest priority** (ignores the 45s cooldown on temperature escalation and stays active even if BMS disconnects):
+### 2. 3-Stage Inverter Over-Temperature Protection (`inv.invTemp` Heatsink NTC)
+Voltronic PI30 heatsinks normally operate at `45–70 °C` under load, ramp fans to 100% / derate at `75–80 °C`, and hard-shutdown (`Fault 02`) around `90–100 °C`. Thermal protection runs at **highest priority** (ignores the 45s cooldown on escalation and stays active even if BMS disconnects):
 
 | Stage | Trigger Temperature | Automatic Action | Recovery Hysteresis |
 | :--- | :---: | :--- | :---: |
-| **Normal** | `< 58 °C` | Normal battery-longevity charging (`80A / 40A / 10A`) | — |
-| **Stage 1 (Throttle-1)** | `≥ 58 °C` | Immediately caps charge current to **`40A`** | `≤ 54 °C` |
-| **Stage 2 (Throttle-2)** | `≥ 64 °C` | Immediately caps charge current to **`10A`** | `≤ 59 °C` |
-| **Stage 3 (EMERGENCY BYPASS)** | **`≥ 70 °C`** | Immediately forces **`POP00` (Grid Bypass) + `10A`** | **`≤ 60 °C`** → Auto-returns to `POP02` (SBU) |
+| **Normal** | `< 65 °C` | Full-speed Boost charging (`100A`) | — |
+| **Stage 1 (Throttle-1)** | `≥ 65 °C` | Immediately caps charge current to **`40A`** | `≤ 60 °C` |
+| **Stage 2 (Throttle-2)** | `≥ 72 °C` | Immediately caps charge current to **`10A`** | `≤ 66 °C` |
+| **Stage 3 (EMERGENCY BYPASS)** | **`≥ 78 °C`** | Immediately forces **`POP00` (Grid Bypass) + `10A`** | **`≤ 65 °C`** → Auto-returns to `POP02` (SBU) |
 
 ---
 

@@ -154,22 +154,22 @@ struct SmartConfig {
   bool     autoManage      = true;  // Otomatik BMS yönetimi aktif mi?
   float    socToGrid       = 20.0;  // %20 altına inince Şebekeye (UTI) geç (Pil Ömrü Profili)
   float    socToBattery    = 30.0;  // %30 üstüne çıkınca Aküye/Solara (SBU) dön
-  float    maxSocLimit     = 92.0;  // ÜST ŞARJ SINIRI (%): Pil ömrü için %92'de 0A durdur (%100 = Sınırsız)
+  float    maxSocLimit     = 90.0;  // ÜST ŞARJ SINIRI (%): %90 dolunca 52.8V/0A durdur (%100 = Sınırsız)
   float    socGridChgOn    = 12.0;  // %12 altına düşerse acil şebeke şarjını (10A) aç
   float    socGridChgOff   = 20.0;  // %20 olunca şebeke şarjını kapat (Sadece Güneş OSO)
   float    cellLowCutV     = 3.00;  // Herhangi bir hücre 3.00V'a inerse Şebekeye geç (uzun ömür)
-  float    cellTaper1V     = 3.42;  // %88+ veya 3.42V -> Orta Şarj Hızı (40A)
-  float    cellTaper2V     = 3.47;  // %94+ veya 3.47V -> Balans Hızı (10A - 1A balans yetişsin)
+  float    cellTaper1V     = 3.45;  // Hücre >= 3.45V -> Voltajı 55.2/54.0V'a + Akımı 40A'e düşür
+  float    cellTaper2V     = 3.49;  // Hücre >= 3.49V -> 1A Balans Hızı (10A)
   float    cellEmergV      = 3.55;  // Acil tepe freni (BMS 3.60V kesmesine asla girmesin)
-  int      maxChargeAmp    = 80;    // 280Ah LiFePO4 Pil Ömrü Şarj Hızı (80A ~ 0.28C, ~4.3kW)
+  int      maxChargeAmp    = 100;   // 10x550W + 280Ah LiFePO4 Hızlı Boost Şarj Hızı (100A ~ 0.35C)
   int      midChargeAmp    = 40;    // Kademe-1 Yumuşatma / Termal Kısma-1 Hızı (40A ~ 2.1kW)
   int      balChargeAmp    = 10;    // Kademe-2 Balans / Termal Kısma-2 Hızı (10A ~ 540W)
   int      gridChargeAmp   = 10;    // Şebekeden acil şarj akımı (10A)
-  float    bulkVoltage     = 55.0;  // 16S LiFePO4 Uzun Ömür Bulk Voltajı (3.437V/hücre)
-  float    floatVoltage    = 53.6;  // 16S LiFePO4 Float Voltajı (3.350V/hücre)
-  int      invTempWarn     = 58;    // İnverter Termal Kademe-1 (°C): Şarjı 40A'e kıs
-  int      invTempHigh     = 64;    // İnverter Termal Kademe-2 (°C): Şarjı 10A'e kıs
-  int      invTempBypass   = 70;    // İnverter Termal Kademe-3 (°C): ACİL ŞEBEKE BYPASS (POP00 + 10A)
+  float    bulkVoltage     = 56.8;  // Hızlı Boost Bulk Voltajı (3.55V/hücre - kablo düşümünü yener!)
+  float    floatVoltage    = 56.0;  // Hızlı Boost Float Voltajı (3.50V/hücre - Voltronic erken Float hatasını yok eder!)
+  int      invTempWarn     = 65;    // İnverter Termal Kademe-1 (°C): Şarjı 40A'e kıs (PI30 araştırma onaylı)
+  int      invTempHigh     = 72;    // İnverter Termal Kademe-2 (°C): Şarjı 10A'e kıs
+  int      invTempBypass   = 78;    // İnverter Termal Kademe-3 (°C): ACİL ŞEBEKE BYPASS (POP00 + 10A)
 } cfg;
 
 // Durum takip değişkenleri (EEPROM Koruması için)
@@ -178,6 +178,7 @@ String   currentTargetOutputPop = "";
 String   currentTargetChgPcp    = "";
 bool     baseLiFePO4Synced      = false;
 bool     socCapActive           = false; // Üst % SoC şarj sınırı şu an devrede mi?
+int      chargeVoltStage        = -1;    // 0=BOOST(56.8/56.0V), 1=YUMUSAT(55.2/54.0V), 2=DURDUR(52.8V/0A)
 int      thermalLevel           = 0;     // 0=Normal, 1=Kısma1(40A), 2=Kısma2(10A), 3=ACİL BYPASS(POP00)
 bool     thermalBypassActive    = false; // İnverter aşırı ısınma acil şebeke bypass aktif mi?
 bool     forceSmartCheck        = true;  // Açılışta veya ayar değişince 45sn beklemeden hemen uygula
@@ -755,13 +756,20 @@ String applyFullLiFePO4Setup(bool forceWrite = false) {
 
   // 1) Program 05: Akü Tipi -> USE (PBT02) - LiFePO4 ayarı olmayan inverterde şarttır!
   setIfNeeded((int)p[12] != 2, "PBT02");
-  // 2) Program 26: Bulk / Emilim Voltajı -> cfg.bulkVoltage (varsayılan 55.0V = 3.437V/hücre, uzun pil ömrü)
-  char vCmd[16];
-  snprintf(vCmd, sizeof(vCmd), "PCVV%.1f", cfg.bulkVoltage);
-  setIfNeeded(fabs(p[10] - cfg.bulkVoltage) > 0.15f, String(vCmd));
-  // 3) Program 27: Float / Tampon Voltajı -> cfg.floatVoltage (varsayılan 53.6V = 3.35V/hücre)
-  snprintf(vCmd, sizeof(vCmd), "PBFT%.1f", cfg.floatVoltage);
-  setIfNeeded(fabs(p[11] - cfg.floatVoltage) > 0.15f, String(vCmd));
+  // 2-3) Program 26 & 27: Bulk & Float Voltajı (Üst sınır zaten doluysa yükseltme; aksi halde doğru sırayla uygula!)
+  bool allowVoltSync = forceWrite || !bms.connected || (cfg.maxSocLimit >= 99.5f) || (bms.soc < cfg.maxSocLimit);
+  if (allowVoltSync) {
+    char bCmd[16], fCmd[16];
+    snprintf(bCmd, sizeof(bCmd), "PCVV%.1f", cfg.bulkVoltage);
+    snprintf(fCmd, sizeof(fCmd), "PBFT%.1f", cfg.floatVoltage);
+    if (cfg.bulkVoltage >= p[10]) {
+      setIfNeeded(fabs(p[10] - cfg.bulkVoltage) > 0.15f, String(bCmd));
+      setIfNeeded(fabs(p[11] - cfg.floatVoltage) > 0.15f, String(fCmd));
+    } else {
+      setIfNeeded(fabs(p[11] - cfg.floatVoltage) > 0.15f, String(fCmd));
+      setIfNeeded(fabs(p[10] - cfg.bulkVoltage) > 0.15f, String(bCmd));
+    }
+  }
   // 4) Program 29: Düşük Voltaj Kesme -> 45.0V (2.81V/hücre)
   setIfNeeded(fabs(p[9] - 45.0f) > 0.25f, "PSDV45.0");
   // 5) Program 12: Şebekeye Dönüş Voltajı -> 46.0V (karar ESP32'de!)
@@ -780,6 +788,25 @@ String applyFullLiFePO4Setup(bool forceWrite = false) {
   if (log.length() == 0) log = "Tum 16S LiFePO4 ayarlari uyumlu";
   inv.lastCmdSent = "[LiFePO4 Ayar] " + log;
   return log;
+}
+
+// Voltronic PI30 kuralı: PCVV >= PBFT daima korunmalı! Yükseltirken PCVV önce, düşürürken PBFT önce gönderilir.
+String setInverterVoltages(float targetBulk, float targetFloat) {
+  if (targetFloat > targetBulk) targetFloat = targetBulk;
+  char bCmd[16], fCmd[16];
+  snprintf(bCmd, sizeof(bCmd), "PCVV%.1f", targetBulk);
+  snprintf(fCmd, sizeof(fCmd), "PBFT%.1f", targetFloat);
+  String r1, r2;
+  if (targetBulk >= invSet.bulkV) {
+    r1 = sendInverterCommand(String(bCmd), 800);
+    delay(250);
+    r2 = sendInverterCommand(String(fCmd), 800);
+  } else {
+    r1 = sendInverterCommand(String(fCmd), 800);
+    delay(250);
+    r2 = sendInverterCommand(String(bCmd), 800);
+  }
+  return r1 + "/" + r2;
 }
 
 // 5.5kW Voltronic PI30 için doğrulanan 10A-110A şarj akımı gönderici (MNCHGC0xxx + MCHGCxxx yedek)
@@ -809,18 +836,18 @@ void runSmartBmsControl() {
     if (inv.invTemp >= cfg.invTempHigh) nextTherm = 2;
     else if (thermalLevel < 2 && inv.invTemp >= cfg.invTempWarn) nextTherm = 1;
   }
-  // Soğuma histerezisi (sürekli aç-kapa yapmamak için: Bypass -10°C, Kademe2 -5°C, Kademe1 -4°C)
-  if (thermalLevel == 3 && inv.invTemp <= (cfg.invTempBypass - 10)) {
+  // Soğuma histerezisi (Bypass -13°C [78->65°C], Kademe2 -6°C [72->66°C], Kademe1 -5°C [65->60°C])
+  if (thermalLevel == 3 && inv.invTemp <= (cfg.invTempBypass - 13)) {
     nextTherm = (inv.invTemp >= cfg.invTempHigh) ? 2 : ((inv.invTemp >= cfg.invTempWarn) ? 1 : 0);
-  } else if (thermalLevel == 2 && inv.invTemp <= (cfg.invTempHigh - 5)) {
+  } else if (thermalLevel == 2 && inv.invTemp <= (cfg.invTempHigh - 6)) {
     nextTherm = (inv.invTemp >= cfg.invTempWarn) ? 1 : 0;
-  } else if (thermalLevel == 1 && inv.invTemp <= (cfg.invTempWarn - 4)) {
+  } else if (thermalLevel == 1 && inv.invTemp <= (cfg.invTempWarn - 5)) {
     nextTherm = 0;
   }
 
   bool thermalEscalated = (nextTherm > thermalLevel);
 
-  // Kademe-3: ACİL TERMAL BYPASS (>= 70°C) -> Derhal Şebekeye (POP00) at + Şarjı 10A'e indir!
+  // Kademe-3: ACİL TERMAL BYPASS (>= 78°C) -> Derhal Şebekeye (POP00) at + Şarjı 10A'e indir!
   if (nextTherm == 3) {
     thermalLevel = 3;
     smartStatusMsg = "ACIL TERMAL BYPASS (" + String(inv.invTemp) + "C -> Sebeke + " + String(cfg.balChargeAmp) + "A)";
@@ -839,7 +866,7 @@ void runSmartBmsControl() {
     return;
   }
 
-  // Termal Bypass'tan soğuyarak çıkış (<= 60°C)
+  // Termal Bypass'tan soğuyarak çıkış (<= 65°C)
   if (thermalLevel == 3 && nextTherm < 3) {
     thermalLevel = nextTherm;
     thermalBypassActive = false;
@@ -876,7 +903,7 @@ void runSmartBmsControl() {
     return;
   }
 
-  // İlk bağlantıda inverterin temel 16S LiFePO4 ayarlarını (USE, 55.0V, 53.6V, 45.0V, PBCV 46V) doğrula
+  // İlk bağlantıda inverterin temel 16S LiFePO4 ayarlarını (USE, 45.0V, PBCV 46V, PBDV 53V) doğrula
   if (!baseLiFePO4Synced) {
     applyFullLiFePO4Setup(false);
     lastInverterCmdMs = millis();
@@ -887,62 +914,89 @@ void runSmartBmsControl() {
   if (!thermalEscalated && !forceSmartCheck && (millis() - lastInverterCmdMs < 45000)) return;
   forceSmartCheck = false;
 
-  // --- KATMAN 0: MAKSİMUM % SoC ŞARJ SINIRI (PİL ÖMRÜ: %92 DOLUNCA 0A DURDUR!) ---
-  // Sınıra ulaşınca Bulk/Float hedefini 52.8V'a çeker: Paneller evi besler, aküye 0A basılır!
-  if (cfg.maxSocLimit < 99.5f && bms.soc >= cfg.maxSocLimit) {
-    smartStatusMsg = "UST SINIR AKTIF (%" + String(cfg.maxSocLimit, 0) + " Doldu -> Sarj 0A Durduruldu)";
-    if (!socCapActive) {
-      String r1 = sendInverterCommand("PBFT52.8", 800);
-      delay(250);
-      String r2 = sendInverterCommand("PCVV52.8", 800);
-      delay(250);
-      String r3 = setInverterChargeAmp(10);
+  // --- KATMAN 0: %90 ÜST SINIR VEYA HÜCRE >= 3.51V EMNİYET KESMESİ (AŞAMA 3: 52.8V / 0A DURDUR!) ---
+  bool hitSocCap  = (cfg.maxSocLimit < 99.5f && bms.soc >= cfg.maxSocLimit);
+  bool hitCellCap = (cfg.maxSocLimit < 99.5f && bms.maxCellV >= 3.51f);
+  if (hitSocCap || hitCellCap) {
+    smartStatusMsg = hitCellCap
+      ? ("UST SINIR EMNIYET (Hucre " + String(bms.maxCellV, 3) + "V -> 52.8V/0A)")
+      : ("UST SINIR AKTIF (%" + String(cfg.maxSocLimit, 0) + " Doldu -> 52.8V / 0A Durduruldu)");
+    bool alreadyAtCap = invSet.valid && fabs(invSet.bulkV - 52.8f) <= 0.15f && fabs(invSet.floatV - 52.8f) <= 0.15f && invSet.maxChgA <= 10;
+    if (!socCapActive || !alreadyAtCap) {
+      if (!alreadyAtCap) {
+        String rv = setInverterVoltages(52.8f, 52.8f);
+        delay(250);
+        String ra = setInverterChargeAmp(10);
+        pollInverterSettings();
+        inv.lastCmdSent = "[Ust Sinir %" + String(cfg.maxSocLimit, 0) + "] 52.8V/0A -> " + rv + " " + ra;
+        lastInverterCmdMs = millis();
+      }
       socCapActive = true;
+      chargeVoltStage = 2;
       currentTargetChargeAmp = 10;
-      pollInverterSettings();
-      inv.lastCmdSent = "[Ust Sinir %" + String(cfg.maxSocLimit, 0) + "] 52.8V/0A -> " + r1 + "/" + r2;
-      lastInverterCmdMs = millis();
       return;
     }
-  } else if (socCapActive && (cfg.maxSocLimit >= 99.5f || bms.soc <= (cfg.maxSocLimit - 3.0f))) {
-    // Sınırın %3 altına inince veya sınır %100 yapılınca normal LiFePO4 şarj voltajlarını geri aç
-    char bCmd[16], fCmd[16];
-    snprintf(bCmd, sizeof(bCmd), "PCVV%.1f", cfg.bulkVoltage);
-    snprintf(fCmd, sizeof(fCmd), "PBFT%.1f", cfg.floatVoltage);
-    String r1 = sendInverterCommand(String(bCmd), 800);
-    delay(250);
-    String r2 = sendInverterCommand(String(fCmd), 800);
+  } else if (socCapActive && (cfg.maxSocLimit >= 99.5f || (bms.soc <= (cfg.maxSocLimit - 3.0f) && bms.maxCellV < 3.42f))) {
+    // Sınırın %3 altına inince veya sınır %100 yapılınca Boost şarj voltajlarını geri aç!
+    float tBulk  = (bms.maxCellV >= cfg.cellTaper1V) ? 55.2f : cfg.bulkVoltage;
+    float tFloat = (bms.maxCellV >= cfg.cellTaper1V) ? 54.0f : cfg.floatVoltage;
+    String rv = setInverterVoltages(tBulk, tFloat);
     socCapActive = false;
+    chargeVoltStage = (bms.maxCellV >= cfg.cellTaper1V) ? 1 : 0;
     pollInverterSettings();
-    inv.lastCmdSent = "[Sinir Acildi] Normal " + String(cfg.bulkVoltage, 1) + "V/" + String(cfg.floatVoltage, 1) + "V -> " + r1 + "/" + r2;
+    inv.lastCmdSent = "[Sinir Acildi] Boost " + String(tBulk, 1) + "V/" + String(tFloat, 1) + "V -> " + rv;
+    forceSmartCheck = true; // Bir sonraki döngüde tam akımı (100A) hemen geri yükselt
     lastInverterCmdMs = millis();
     return;
   }
 
-  // Üst sınır aktifken şarj akımını tekrar artırma
+  // Üst sınır aktifken şarj akımını veya voltajını tekrar artırma
   if (socCapActive) return;
 
-  // --- KATMAN 1 & 4: PİL ÖMRÜ + TERMAL KORUMALI AKILLI ŞARJ HIZI ---
+  // --- KATMAN 1 & 4: 3 AŞAMALI DİNAMİK VOLTAJ (BOOST -> YUMUŞATMA) + AKIM + TERMAL KONTROL ---
+  // Aşama 0 (BOOST): Hücre < 3.45V iken 56.8V/56.0V + 100A (kablo düşümünü ve erken Float'ı tamamen yener!)
+  // Aşama 1 (YUMUŞATMA): Hücre >= 3.45V (veya %100 balans gününde %93+) olunca 55.2V/54.0V + 40A/10A!
+  int desiredVoltStage = (chargeVoltStage == 1) ? 1 : 0;
   int desiredAmp = cfg.maxChargeAmp;
-  String reason = "Pil Omru Sarj (" + String(cfg.maxChargeAmp) + "A)";
+  String reason = "BOOST Hizli Sarj (" + String(cfg.bulkVoltage, 1) + "V/" + String(cfg.floatVoltage, 1) + "V " + String(cfg.maxChargeAmp) + "A)";
 
   if (bms.tempMax <= 2 || bms.tempMax >= 45) {
+    desiredVoltStage = 1;
     desiredAmp = cfg.balChargeAmp;
-    reason = "Pil Sicaklik Korumasi (" + String(bms.tempMax) + "C -> " + String(cfg.balChargeAmp) + "A)";
+    reason = "Pil Sicaklik Korumasi (" + String(bms.tempMax) + "C -> 55.2V/" + String(cfg.balChargeAmp) + "A)";
   } else if (bms.maxCellV >= cfg.cellEmergV) {
+    desiredVoltStage = 1;
     desiredAmp = cfg.balChargeAmp;
-    reason = "Acil Tepe Freni (Hucre >= " + String(cfg.cellEmergV, 2) + "V -> " + String(cfg.balChargeAmp) + "A)";
-  } else if (bms.maxCellV >= cfg.cellTaper2V || bms.soc >= 94.0f || (bms.cellDiffMv >= 45.0f && bms.maxCellV >= 3.40f)) {
+    reason = "Acil Tepe Freni (Hucre >= " + String(cfg.cellEmergV, 2) + "V -> 55.2V/" + String(cfg.balChargeAmp) + "A)";
+  } else if (bms.maxCellV >= cfg.cellTaper2V || (cfg.maxSocLimit >= 99.5f && bms.soc >= 96.0f) || (bms.cellDiffMv >= 45.0f && bms.maxCellV >= 3.40f)) {
+    desiredVoltStage = 1;
     desiredAmp = cfg.balChargeAmp;
-    reason = "1A Balans Modu (%94+ / " + String(cfg.cellTaper2V, 2) + "V -> " + String(cfg.balChargeAmp) + "A)";
-  } else if (bms.maxCellV >= cfg.cellTaper1V || bms.soc >= 88.0f) {
+    reason = "1A Balans Modu (" + String(cfg.cellTaper2V, 2) + "V -> 55.2V/" + String(cfg.balChargeAmp) + "A)";
+  } else if (bms.maxCellV >= cfg.cellTaper1V || (cfg.maxSocLimit >= 99.5f && bms.soc >= 93.0f)) {
+    desiredVoltStage = 1;
     desiredAmp = cfg.midChargeAmp;
-    reason = "Yumusatma Modu (%88+ / " + String(cfg.cellTaper1V, 2) + "V -> " + String(cfg.midChargeAmp) + "A)";
-  } else if (bms.maxCellV < (cfg.cellTaper1V - 0.04f) && bms.soc < 86.0f) {
+    reason = "Yumusatma Modu (Hucre >= " + String(cfg.cellTaper1V, 2) + "V -> 55.2V/" + String(cfg.midChargeAmp) + "A)";
+  } else if (bms.maxCellV < (cfg.cellTaper1V - 0.04f)) {
+    desiredVoltStage = 0;
     desiredAmp = cfg.maxChargeAmp;
-    reason = "Pil Omru Normal (<%86 -> " + String(cfg.maxChargeAmp) + "A)";
+    reason = "BOOST Hizli Sarj (" + String(cfg.bulkVoltage, 1) + "V/" + String(cfg.floatVoltage, 1) + "V -> " + String(cfg.maxChargeAmp) + "A)";
   } else if (currentTargetChargeAmp > 0) {
     desiredAmp = currentTargetChargeAmp; // Histerezis bölgesi - gereksiz değiştirme
+  }
+
+  // Dinamik Voltaj Geçişi (BOOST 56.8/56.0V <-> YUMUŞATMA 55.2/54.0V)
+  float targetBulkV  = (desiredVoltStage == 0) ? cfg.bulkVoltage  : 55.2f;
+  float targetFloatV = (desiredVoltStage == 0) ? cfg.floatVoltage : 54.0f;
+  bool voltMismatch = invSet.valid && (fabs(invSet.bulkV - targetBulkV) > 0.15f || fabs(invSet.floatV - targetFloatV) > 0.15f);
+  if (desiredVoltStage != chargeVoltStage || voltMismatch) {
+    String rv = setInverterVoltages(targetBulkV, targetFloatV);
+    chargeVoltStage = desiredVoltStage;
+    pollInverterSettings();
+    inv.lastCmdSent = (desiredVoltStage == 0 ? "[BOOST Voltaj] " : "[Yumusatma Voltaj] ") +
+                      String(targetBulkV, 1) + "V/" + String(targetFloatV, 1) + "V -> " + rv;
+    forceSmartCheck = true; // Voltaj oturduktan sonra akımı da hemen eşitle
+    lastInverterCmdMs = millis();
+    return;
   }
 
   // İnverter Termal Kademe-1 / Kademe-2 Şarj Akımı Kısma (Pil hedef akımını aşağı çek!)
@@ -956,10 +1010,11 @@ void runSmartBmsControl() {
 
   smartStatusMsg = reason;
 
-  if (desiredAmp != currentTargetChargeAmp) {
+  if (desiredAmp != currentTargetChargeAmp || (invSet.valid && invSet.maxChgA != (((desiredAmp + 5) / 10) * 10))) {
     String usedCmd;
     String r = setInverterChargeAmp(desiredAmp, &usedCmd);
     currentTargetChargeAmp = desiredAmp;
+    pollInverterSettings();
     inv.lastCmdSent = usedCmd + " [" + reason + "] -> " + r;
     lastInverterCmdMs = millis();
     return;
@@ -1066,6 +1121,7 @@ String buildStatusJson() {
   j += "\"temp\":" + String(inv.invTemp) + ",";
   j += "\"thermLvl\":" + String(thermalLevel) + ",";
   j += "\"thermByp\":" + String(thermalBypassActive ? "true" : "false") + ",";
+  j += "\"voltStg\":" + String(chargeVoltStage) + ",";
   j += "\"mode\":\"" + inv.workMode + "\",";
   j += "\"diag\":\"" + invDiagInfo + "\",";
   j += "\"smart\":\"" + smartStatusMsg + "\",";
@@ -1178,11 +1234,11 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     if ((v = getParamVal(msg, "maxA")).length())   cfg.maxChargeAmp  = v.toInt();
     if ((v = getParamVal(msg, "midA")).length())   cfg.midChargeAmp  = v.toInt();
     if ((v = getParamVal(msg, "balA")).length())   cfg.balChargeAmp  = v.toInt();
-    if ((v = getParamVal(msg, "bulkV")).length())  cfg.bulkVoltage   = constrain(v.toFloat(), 52.0f, 57.6f);
-    if ((v = getParamVal(msg, "floatV")).length()) cfg.floatVoltage  = constrain(v.toFloat(), 51.0f, 56.0f);
-    if ((v = getParamVal(msg, "tWarn")).length())  cfg.invTempWarn   = constrain(v.toInt(), 40, 75);
-    if ((v = getParamVal(msg, "tHigh")).length())  cfg.invTempHigh   = constrain(v.toInt(), cfg.invTempWarn + 2, 80);
-    if ((v = getParamVal(msg, "tByp")).length())   cfg.invTempBypass = constrain(v.toInt(), cfg.invTempHigh + 2, 85);
+    if ((v = getParamVal(msg, "bulkV")).length())  cfg.bulkVoltage   = constrain(v.toFloat(), 52.0f, 57.2f);
+    if ((v = getParamVal(msg, "floatV")).length()) cfg.floatVoltage  = constrain(v.toFloat(), 51.0f, cfg.bulkVoltage);
+    if ((v = getParamVal(msg, "tWarn")).length())  cfg.invTempWarn   = constrain(v.toInt(), 45, 78);
+    if ((v = getParamVal(msg, "tHigh")).length())  cfg.invTempHigh   = constrain(v.toInt(), cfg.invTempWarn + 2, 84);
+    if ((v = getParamVal(msg, "tByp")).length())   cfg.invTempBypass = constrain(v.toInt(), cfg.invTempHigh + 2, 90);
 
     prefs.putBool("auto", cfg.autoManage);
     prefs.putFloat("socG", cfg.socToGrid);
@@ -1264,19 +1320,19 @@ void setup() {
   cfg.autoManage    = prefs.getBool("auto", true);
   cfg.socToGrid     = prefs.getFloat("socG", 20.0f);
   cfg.socToBattery  = prefs.getFloat("socB", 30.0f);
-  cfg.maxSocLimit   = prefs.getFloat("maxS", 92.0f);
+  cfg.maxSocLimit   = prefs.getFloat("maxS", 90.0f);
   cfg.socGridChgOn  = prefs.getFloat("chgOn", 12.0f);
   cfg.socGridChgOff = prefs.getFloat("chgOff", 20.0f);
-  cfg.cellTaper1V   = prefs.getFloat("tap1", 3.42f);
-  cfg.cellTaper2V   = prefs.getFloat("tap2", 3.47f);
-  cfg.maxChargeAmp  = prefs.getInt("maxA", 80);
+  cfg.cellTaper1V   = prefs.getFloat("tap1", 3.45f);
+  cfg.cellTaper2V   = prefs.getFloat("tap2", 3.49f);
+  cfg.maxChargeAmp  = prefs.getInt("maxA", 100);
   cfg.midChargeAmp  = prefs.getInt("midA", 40);
   cfg.balChargeAmp  = prefs.getInt("balA", 10);
-  cfg.bulkVoltage   = prefs.getFloat("bulkV", 55.0f);
-  cfg.floatVoltage  = prefs.getFloat("floatV", 53.6f);
-  cfg.invTempWarn   = prefs.getInt("tWarn", 58);
-  cfg.invTempHigh   = prefs.getInt("tHigh", 64);
-  cfg.invTempBypass = prefs.getInt("tByp", 70);
+  cfg.bulkVoltage   = prefs.getFloat("bulkV", 56.8f);
+  cfg.floatVoltage  = prefs.getFloat("floatV", 56.0f);
+  cfg.invTempWarn   = prefs.getInt("tWarn", 65);
+  cfg.invTempHigh   = prefs.getInt("tHigh", 72);
+  cfg.invTempBypass = prefs.getInt("tByp", 78);
 
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false); // Anında 2ms tepki süresi - Telefon bağlantısı asla zaman aşımına uğramaz!
@@ -1601,11 +1657,11 @@ void setup() {
     if (server.hasArg("maxA"))   cfg.maxChargeAmp  = server.arg("maxA").toInt();
     if (server.hasArg("midA"))   cfg.midChargeAmp  = server.arg("midA").toInt();
     if (server.hasArg("balA"))   cfg.balChargeAmp  = server.arg("balA").toInt();
-    if (server.hasArg("bulkV"))  cfg.bulkVoltage   = constrain(server.arg("bulkV").toFloat(), 52.0f, 57.6f);
-    if (server.hasArg("floatV")) cfg.floatVoltage  = constrain(server.arg("floatV").toFloat(), 51.0f, 56.0f);
-    if (server.hasArg("tWarn"))  cfg.invTempWarn   = constrain(server.arg("tWarn").toInt(), 40, 75);
-    if (server.hasArg("tHigh"))  cfg.invTempHigh   = constrain(server.arg("tHigh").toInt(), cfg.invTempWarn + 2, 80);
-    if (server.hasArg("tByp"))   cfg.invTempBypass = constrain(server.arg("tByp").toInt(), cfg.invTempHigh + 2, 85);
+    if (server.hasArg("bulkV"))  cfg.bulkVoltage   = constrain(server.arg("bulkV").toFloat(), 52.0f, 57.2f);
+    if (server.hasArg("floatV")) cfg.floatVoltage  = constrain(server.arg("floatV").toFloat(), 51.0f, cfg.bulkVoltage);
+    if (server.hasArg("tWarn"))  cfg.invTempWarn   = constrain(server.arg("tWarn").toInt(), 45, 78);
+    if (server.hasArg("tHigh"))  cfg.invTempHigh   = constrain(server.arg("tHigh").toInt(), cfg.invTempWarn + 2, 84);
+    if (server.hasArg("tByp"))   cfg.invTempBypass = constrain(server.arg("tByp").toInt(), cfg.invTempHigh + 2, 90);
 
     prefs.putBool("auto", cfg.autoManage);
     prefs.putFloat("socG", cfg.socToGrid);
