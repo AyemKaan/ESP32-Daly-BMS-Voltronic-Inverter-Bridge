@@ -209,12 +209,12 @@
       <div class="det2" id="prioSub">Kaynak: OSO • Limit: 10A</div>
     </div>
 
-    <!-- 6. İnverter Isısı -->
-    <div class="fcard" onclick="openSettingsTab('auto')">
-      <div class="top"><span class="lbl">🌡️ İnverter Isısı</span><span class="hint" id="invThermHint">Normal</span></div>
+    <!-- 6. İnverter Isısı + Q1 İç Sensörler & Fan -->
+    <div class="fcard" onclick="toggleDetail('inv')">
+      <div class="top"><span class="lbl">🌡️ İnverter &amp; Fan</span><span class="hint" id="invThermHint">🌀 Fan %--</span></div>
       <div class="val" style="color:#34d399" id="invTempBig">-- °C</div>
-      <div class="det" id="actVoltAmp">Hedef: --.-V • --A</div>
-      <div class="det2" id="invThermLim">Koruma: 65 / 72 / 78°C</div>
+      <div class="det" id="q1TempCard">IGBT:--° • DC:--° • Trf:--°</div>
+      <div class="det2" id="invThermLim">Uyarı Yok • 65/72/78°C</div>
     </div>
 
     <!-- 7. BMS / Pil Isısı -->
@@ -239,7 +239,7 @@
     <div class="smart-bar" onclick="openSettingsTab('auto')">
       <div>
         <div class="stxt" id="smartMsg">Otomasyon Hazır</div>
-        <div class="ssub" id="lastCmd">Son komut: ---</div>
+        <div class="ssub"><span id="actVoltAmp">Hedef: --.-V • --A</span> • <span id="lastCmd">Son: ---</span></div>
       </div>
       <span class="edit-tag" id="capQuickTag">⚙️ %90 Ayarla ▸</span>
     </div>
@@ -685,11 +685,12 @@ function renderData(d){
 
   const pvW = Number(i.pvW||0);
   const sccActive = !!(i.sccChg || pvW >= 15);
+  const stgMap = {10:'Boşta', 11:'Bulk (CC)', 12:'Absorb (CV)', 13:'Float'};
   document.getElementById('pvW').innerText = pvW + ' W';
   document.getElementById('pvVA').innerText = Number(i.pvV||0).toFixed(1) + ' V • ' + Number(i.pvA||0).toFixed(1) + ' A';
   const sccEl = document.getElementById('sccBadge');
-  sccEl.innerText = sccActive ? '☀️ Şarjda' : 'Gece / Boşta';
-  sccEl.style.color = sccActive ? '#34d399' : '#64748b';
+  sccEl.innerText = sccActive ? ('☀️ ' + (stgMap[i.chgStg] || 'Şarjda')) : ('Aşama: ' + (stgMap[i.chgStg] || 'Gece'));
+  sccEl.style.color = sccActive ? '#34d399' : '#94a3b8';
 
   const isLine = String(i.mode||'').indexOf('(L)') >= 0;
   document.getElementById('loadW').innerText = (i.loadW||0) + ' W';
@@ -724,26 +725,33 @@ function renderData(d){
     acDetEl.innerText = gridPresent ? 'Beklemede (0 A)' : 'Şebeke Kesik (0 A)';
   }
 
-  // İnverter Isısı Kartı
+  // İnverter Isısı + Q1 (IGBT / DC-DC / Trafo / Fan %) + QPIWS Kartı
   const tInv = Number(i.temp||0), tLvl = Number(i.thermLvl||0);
+  const fanPct = Number(i.fanPct||0);
   const invBigEl = document.getElementById('invTempBig');
   const invHintEl = document.getElementById('invThermHint');
   const thEl = document.getElementById('thermBadge');
   invBigEl.innerText = tInv + ' °C';
-  if(c.tWarn !== undefined){
-    document.getElementById('invThermLim').innerText = `Sınır: ${c.tWarn} / ${c.tHigh} / ${c.tByp}°C`;
+  if(i.igbtT !== undefined){
+    document.getElementById('q1TempCard').innerText = `IGBT:${i.igbtT}° • DC:${i.dcdcT||0}° • Trf:${i.trafoT||0}°C`;
   }
+  const hasInvWarn = (i.warn && i.warn !== 'Uyarı Yok');
+  const limTxt = (c.tWarn !== undefined) ? `${c.tWarn}/${c.tHigh}/${c.tByp}°C` : '65/72/78°C';
+  const limEl = document.getElementById('invThermLim');
+  limEl.innerText = hasInvWarn ? ('⚠️ ' + i.warn) : ('🟢 Uyarı Yok • ' + limTxt);
+  limEl.style.color = hasInvWarn ? '#f87171' : '#94a3b8';
+
   if(tLvl >= 3 || i.thermByp){
-    invBigEl.style.color = '#f87171'; invHintEl.innerText = '🚨 ACİL BYPASS'; invHintEl.style.color = '#f87171';
+    invBigEl.style.color = '#f87171'; invHintEl.innerText = `🚨 BYPASS • Fan %${fanPct}`; invHintEl.style.color = '#f87171';
     thEl.className = 'pill no'; thEl.innerText = '🚨 ' + tInv + '°C ACİL BYPASS';
   } else if(tLvl === 2){
-    invBigEl.style.color = '#fb923c'; invHintEl.innerText = '🔥 Kısma (10A)'; invHintEl.style.color = '#fb923c';
+    invBigEl.style.color = '#fb923c'; invHintEl.innerText = `🔥 10A • Fan %${fanPct}`; invHintEl.style.color = '#fb923c';
     thEl.className = 'pill no'; thEl.innerText = '🔥 ' + tInv + '°C Kısma-2';
   } else if(tLvl === 1){
-    invBigEl.style.color = '#fbbf24'; invHintEl.innerText = '⚠️ Kısma (40A)'; invHintEl.style.color = '#fbbf24';
+    invBigEl.style.color = '#fbbf24'; invHintEl.innerText = `⚠️ 40A • Fan %${fanPct}`; invHintEl.style.color = '#fbbf24';
     thEl.className = 'pill warn'; thEl.innerText = '⚠️ ' + tInv + '°C Kısma-1';
   } else {
-    invBigEl.style.color = '#34d399'; invHintEl.innerText = '🟢 Normal'; invHintEl.style.color = '#34d399';
+    invBigEl.style.color = '#34d399'; invHintEl.innerText = `🌀 Fan %${fanPct}`; invHintEl.style.color = '#38bdf8';
     thEl.className = 'pill ok'; thEl.innerText = '🌡️ ' + tInv + '°C Normal';
   }
 
@@ -773,8 +781,8 @@ function renderData(d){
   document.getElementById('lastCmd').innerText  = 'Son: ' + (i.lastCmd || '---');
   document.getElementById('roInvCur').innerText = (i.chgA||0) + ' A Şarj / ' + (i.disA||0) + ' A Deşarj';
   if(i.igbtT !== undefined){
-    document.getElementById('roQ1Temps').innerText = `${i.igbtT} / ${i.dcdcT||0} / ${i.trafoT||0} °C`;
-    const stgMap = {10:'Boşta', 11:'Bulk (CC)', 12:'Absorb (CV)', 13:'Float'};
+    const sccExtra = (i.sccT && Number(i.sccT) > 0) ? ` (MPPT:${i.sccT}°)` : '';
+    document.getElementById('roQ1Temps').innerText = `${i.igbtT} / ${i.dcdcT||0} / ${i.trafoT||0} °C${sccExtra}`;
     document.getElementById('roQ1Fan').innerText = `Fan %${i.fanPct||0} • ${stgMap[i.chgStg]||'Aktif'}`;
   }
   if(i.warn !== undefined){

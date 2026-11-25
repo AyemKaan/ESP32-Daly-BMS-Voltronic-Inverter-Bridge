@@ -1303,6 +1303,7 @@ String buildStatusJson() {
   j += "\"igbtT\":" + String(inv.igbtTemp) + ",";
   j += "\"dcdcT\":" + String(inv.dcdcTemp) + ",";
   j += "\"trafoT\":" + String(inv.trafoTemp) + ",";
+  j += "\"sccT\":" + String(inv.sccTemp) + ",";
   j += "\"fanPct\":" + String(inv.fanSpeedPct) + ",";
   j += "\"chgStg\":" + String(inv.chgStageCode) + ",";
   j += "\"warn\":\"" + inv.warnText + "\",";
@@ -1585,7 +1586,8 @@ void setup() {
   // Web Sunucu Rotaları (CORS açık - Mobil APK / PWA doğrudan bağlanabilir)
   server.on("/", HTTP_GET, []() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
-    server.send_P(200, "text/html", INDEX_HTML);
+    server.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    server.send_P(200, "text/html; charset=utf-8", INDEX_HTML);
   });
 
   server.on("/api/status", HTTP_GET, []() {
@@ -1987,7 +1989,11 @@ void setup() {
           forceQpiriRefresh = false;
           pollInverterSettings();
           lastQpiriPollMs = millis();
-        } else if (millis() - lastQ1PollMs >= 6000) {
+          if (lastQ1PollMs == 0) {
+            pollInverterExtended();
+            lastQ1PollMs = millis();
+          }
+        } else if (lastQ1PollMs == 0 || (millis() - lastQ1PollMs >= 4000)) {
           pollInverterExtended();
           lastQ1PollMs = millis();
         }
