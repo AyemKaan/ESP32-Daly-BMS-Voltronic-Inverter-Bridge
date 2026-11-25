@@ -256,8 +256,12 @@
       <div class="cells" id="cellsGrid"></div>
     </div>
 
-    <!-- Ayrıntı Paneli 2: İnverter Canlı Parametre Özeti -->
+    <!-- Ayrıntı Paneli 2: İnverter Canlı Parametre & Gizli Q1/QPIWS Özeti -->
     <div id="dpanel_inv" class="dpanel">
+      <div class="row"><span>Protokol &amp; DSP Firmware</span><strong id="roFw">PI30 • v96.00</strong></div>
+      <div class="row"><span>İç Isılar (Q1: IGBT / DC-DC / Trafo)</span><strong id="roQ1Temps">-- / -- / -- °C</strong></div>
+      <div class="row"><span>Fan Hızı &amp; Şarj Aşaması (Q1)</span><strong id="roQ1Fan">Fan %-- • ---</strong></div>
+      <div class="row"><span>İnverter Uyarı / Arıza (QPIWS)</span><strong id="roInvWarn" style="color:#34d399">Uyarı Yok</strong></div>
       <div class="row"><span>Çıkış / Şarj Önceliği</span><strong id="roPrio">SBU / OSO</strong></div>
       <div class="row"><span>Bulk / Float / Kesme Voltajı</span><strong id="roVolts">56.8V / 56.0V / 45.0V</strong></div>
       <div class="row"><span>Şebekeye Geçiş / Aküye Dönüş V</span><strong id="roGridV">46.0V / 53.0V</strong></div>
@@ -435,14 +439,17 @@
         <button id="btnM110" onclick="pubCmd('MNCHGC0110')">110A</button>
       </div>
 
-      <div class="sec-lbl"><span>Prog 11 — Şebekeden Şarj Akımı</span><small id="lblGridChg">-- A</small></div>
+      <div class="sec-lbl"><span>Prog 11 — Şebekeden Şarj Akımı (QMUCHGCR: 2A–80A)</span><small id="lblGridChg">-- A</small></div>
       <div class="btns">
-        <button id="btnU2" onclick="pubCmd('MUCHGC002')">2A</button>
+        <button id="btnU2"  onclick="pubCmd('MUCHGC002')">2A</button>
         <button id="btnU10" onclick="pubCmd('MUCHGC010')">10A</button>
         <button id="btnU20" onclick="pubCmd('MUCHGC020')">20A</button>
         <button id="btnU30" onclick="pubCmd('MUCHGC030')">30A</button>
         <button id="btnU40" onclick="pubCmd('MUCHGC040')">40A</button>
+        <button id="btnU50" onclick="pubCmd('MUCHGC050')">50A</button>
         <button id="btnU60" onclick="pubCmd('MUCHGC060')">60A</button>
+        <button id="btnU70" onclick="pubCmd('MUCHGC070')">70A</button>
+        <button id="btnU80" onclick="pubCmd('MUCHGC080')">80A</button>
       </div>
 
       <div class="sec-lbl"><span>Prog 05 — Akü Tipi</span><small id="lblBatType">---</small></div>
@@ -621,8 +628,8 @@ function connectMqtt(){
     document.getElementById('mqttPill').innerText = 'WI-FI';
     pollLocal();
     pollLocalStats();
-    setInterval(pollLocal, 2500);
-    setInterval(pollLocalStats, 12000);
+    setInterval(pollLocal, 1000);
+    setInterval(pollLocalStats, 10000);
     return;
   }
   const cid = 'APK_' + Math.random().toString(16).slice(2, 10);
@@ -765,6 +772,16 @@ function renderData(d){
   document.getElementById('smartMsg').innerText = i.smart || 'Aktif';
   document.getElementById('lastCmd').innerText  = 'Son: ' + (i.lastCmd || '---');
   document.getElementById('roInvCur').innerText = (i.chgA||0) + ' A Şarj / ' + (i.disA||0) + ' A Deşarj';
+  if(i.igbtT !== undefined){
+    document.getElementById('roQ1Temps').innerText = `${i.igbtT} / ${i.dcdcT||0} / ${i.trafoT||0} °C`;
+    const stgMap = {10:'Boşta', 11:'Bulk (CC)', 12:'Absorb (CV)', 13:'Float'};
+    document.getElementById('roQ1Fan').innerText = `Fan %${i.fanPct||0} • ${stgMap[i.chgStg]||'Aktif'}`;
+  }
+  if(i.warn !== undefined){
+    const wEl = document.getElementById('roInvWarn');
+    wEl.innerText = i.warn || 'Uyarı Yok';
+    wEl.style.color = (i.warn && i.warn !== 'Uyarı Yok') ? '#f87171' : '#34d399';
+  }
 
   // 3) 16 Hücre Ayrıntı Paneli
   if(Array.isArray(b.cells) && b.cells.length === 16){
@@ -826,7 +843,8 @@ function renderData(d){
     document.getElementById('roGridV').innerText    = Number(s.backGridV).toFixed(1) + 'V / ' + Number(s.backBatV).toFixed(1) + 'V';
     document.getElementById('roAmps').innerText     = s.maxChgA + ' A / ' + s.gridChgA + ' A';
 
-    document.getElementById('invRatedBadge').innerText = (s.ratedW||5500) + 'W • 48V';
+    document.getElementById('invRatedBadge').innerText = (s.ratedW||5500) + 'W • ' + (s.fw ? ('FW ' + s.fw) : '48V');
+    if(s.fw) document.getElementById('roFw').innerText = 'PI30 • DSP v' + s.fw;
     document.getElementById('lblOutPrio').innerText = 'Aktif: ' + (outNames[s.outPrio] || s.outPrio);
     setActive(['btnPOP00','btnPOP01','btnPOP02'], 'btnPOP0' + s.outPrio);
     document.getElementById('lblChgPrio').innerText = 'Aktif: ' + (chgNames[s.chgPrio] || s.chgPrio);
@@ -834,7 +852,7 @@ function renderData(d){
     document.getElementById('lblMaxChg').innerText = 'Aktif: ' + s.maxChgA + ' A';
     setActive(['btnM10','btnM20','btnM30','btnM40','btnM60','btnM80','btnM90','btnM100','btnM110'], 'btnM' + s.maxChgA);
     document.getElementById('lblGridChg').innerText = 'Aktif: ' + s.gridChgA + ' A';
-    setActive(['btnU2','btnU10','btnU20','btnU30','btnU40','btnU60'], 'btnU' + s.gridChgA);
+    setActive(['btnU2','btnU10','btnU20','btnU30','btnU40','btnU50','btnU60','btnU70','btnU80'], 'btnU' + s.gridChgA);
     document.getElementById('lblBatType').innerText = 'Aktif: ' + (batNames[s.battType] || s.battType);
     setActive(['btnPBT00','btnPBT01','btnPBT02'], 'btnPBT0' + s.battType);
     document.getElementById('lblAcRange').innerText = 'Aktif: ' + (acNames[s.acRange] || s.acRange);
@@ -931,7 +949,7 @@ async function pubCmd(cmdStr){
   if(IS_LOCAL_ESP){
     await fetch('/api/cmd?c=' + encodeURIComponent(cmdStr));
     toast('Komut gönderildi: ' + cmdStr);
-    setTimeout(pollLocal, 600);
+    setTimeout(pollLocal, 350);
     return;
   }
   if(!client || !client.connected){ toast('MQTT bağlantısı bekleniyor...'); return; }

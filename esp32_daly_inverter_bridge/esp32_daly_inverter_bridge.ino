@@ -126,6 +126,13 @@ struct InverterData {
   int      pvPowerWatt     = 0;     // Solar Üretim Gücü (W)
   bool     sccChgOn        = false; // QPIGS b1: Solar MPPT şarj aktif mi?
   bool     acChgOn         = false; // QPIGS b0: Şebekeden (AC) şarj aktif mi?
+  int      igbtTemp        = 0;     // Q1[6]: IGBT Soğutucu Sıcaklığı (°C)
+  int      dcdcTemp        = 0;     // Q1[7]: DC-DC Akü Katı Sıcaklığı (°C)
+  int      trafoTemp       = 0;     // Q1[8]: Trafo Sıcaklığı (°C)
+  int      sccTemp         = 0;     // Q1[5]: MPPT SCC Sıcaklığı (°C)
+  int      fanSpeedPct     = 0;     // Q1[12]: Fan Hızı (%)
+  int      chgStageCode    = 10;    // Q1[16]: 10=Boşta, 11=Bulk, 12=Absorb, 13=Float
+  String   warnText        = "Uyarı Yok"; // QPIWS: 32-bit canlı inverter uyarı/arıza durumu
   String   workMode        = "Bilinmiyor"; // SBU / Line / Battery
   String   lastCmdSent     = "Yok";
   uint32_t lastUpdateMs    = 0;
@@ -156,6 +163,7 @@ struct InverterSettings {
   bool   flagLcd    = true;  // Prog 20: LCD Ekran Işığı (x)
   bool   flagSrcAlm = false; // Prog 22: Ana Kaynak Kesinti Alarmı (y)
   bool   flagFltRec = false; // Prog 25: Arıza Kodu Kaydı (z)
+  String fwVer      = "";    // QVFW: DSP Firmware Sürümü (örn. 96.00)
   String qflagRaw   = "";
 } invSet;
 
@@ -195,7 +203,9 @@ uint32_t balHoldStartMs         = 0;     // Aylık tepe balans bekleme sayacı
 int      chargeVoltStage        = -1;    // 0=BOOST(56.8/56.0V), 1=YUMUSAT(55.2/54.0V), 2=DURDUR(52.8V/0A)
 int      thermalLevel           = 0;     // 0=Normal, 1=Kısma1(40A), 2=Kısma2(10A), 3=ACİL BYPASS(POP00)
 bool     thermalBypassActive    = false; // İnverter aşırı ısınma acil şebeke bypass aktif mi?
-bool     forceSmartCheck        = true;  // Açılışta veya ayar değişince 45sn beklemeden hemen uygula
+bool     forceSmartCheck        = true;  // Açılışta veya ayar değişince beklemeden hemen uygula
+bool     forceQpiriRefresh      = false; // Komut sonrası arka planda QPIRI/QFLAG yenile (HTTP'yi bekletme!)
+uint32_t lastQ1PollMs           = 0;     // Q1 + QPIWS genişletilmiş teşhis zamanlayıcısı
 String   invQpiriRaw            = "Okunmadı";
 String   smartStatusMsg         = "Hazır";
 uint32_t lastInverterCmdMs      = 0;
@@ -267,7 +277,7 @@ String sendInverterCommand(const String& cmd, uint32_t timeoutMs = 1200) {
       }
       if (rawLen < 255) raw[rawLen++] = b;
     }
-    delay(5);
+    delay(1); // 1ms milisaniyelik hassas okuma (\r gelir gelmez anında döner!)
   }
   if (invMutex) xSemaphoreGive(invMutex);
   String resp = "";
@@ -369,6 +379,59 @@ void pollInverterSettings() {
       invSet.flagSrcAlm = (en.indexOf('y') >= 0);
       invSet.flagFltRec = (en.indexOf('z') >= 0);
     }
+  }
+  if (invSet.fwVer.length() == 0) {
+    String qfw = sendInverterCommand("QVFW", 500);
+    int col = qfw.indexOf(':');
+    if (col > 0) {
+      invSet.fwVer = qfw.substring(col + 1);
+      while (invSet.fwVer.startsWith("0") && invSet.fwVer.length() > 4) invSet.fwVer.remove(0, 1);
+    }
+  }
+}
+
+// Gizli PI30 Teşhis Sorguları: Q1 (IGBT/DC-DC/Trafo Sıcaklıkları + Fan % + Şarj Aşaması) & QPIWS (32-bit Uyarı/Arıza)
+void pollInverterExtended() {
+  if (!inv.connected) return;
+  String q1 = sendInverterCommand("Q1", 550);
+  if (q1.startsWith("(") && q1.length() > 30) {
+    String d = q1.substring(1);
+    int q[18] = {0};
+    int idx = 0, st = 0;
+    for (int i = 0; i <= (int)d.length() && idx < 18; i++) {
+      if (i == (int)d.length() || d[i] == ' ') {
+        if (i > st) q[idx++] = d.substring(st, i).toInt();
+        st = i + 1;
+      }
+    }
+    if (idx >= 14) {
+      inv.sccTemp      = q[5];
+      inv.igbtTemp     = q[6];
+      inv.dcdcTemp     = q[7];
+      inv.trafoTemp    = q[8];
+      inv.fanSpeedPct  = constrain(q[12], 0, 100);
+      if (idx >= 17) inv.chgStageCode = q[16];
+    }
+  }
+
+  String ws = sendInverterCommand("QPIWS", 500);
+  if (ws.startsWith("(") && ws.length() >= 20) {
+    String b = ws.substring(1);
+    String w = "";
+    auto bit = [&](int n) { return (n < (int)b.length() && b[n] == '1'); };
+    if (bit(1))  w += "İnverter Arıza! ";
+    if (bit(2))  w += "Bus Yüksek! ";
+    if (bit(3))  w += "Bus Düşük! ";
+    if (bit(5))  w += "Şebeke Yok! ";
+    if (bit(6))  w += "Çıkış Kısa Devre! ";
+    if (bit(9))  w += "Aşırı Isı! ";
+    if (bit(10)) w += "Fan Kilitli! ";
+    if (bit(11)) w += "Akü Voltaj Yüksek! ";
+    if (bit(12)) w += "Akü Düşük! ";
+    if (bit(16)) w += "Aşırı Yük! ";
+    if (bit(17)) w += "EEPROM Uyarısı! ";
+    if (bit(19)) w += "PV Voltaj Yüksek! ";
+    inv.warnText = (w.length() > 0) ? w : "Uyarı Yok";
   }
 }
 
@@ -532,7 +595,7 @@ void pollDalyBMS() {
     bms.connected    = true;
     bms.lastUpdateMs = millis();
   }
-  delay(25);
+  delay(8);
 
   // 0x91: Max ve Min Hücre Voltajı
   if (sendDalyRs485(bmsHostAddr, 0x91, buf, 1)) {
@@ -544,14 +607,14 @@ void pollDalyBMS() {
     bms.minCellNum = buf[9];
     bms.cellDiffMv = (float)(maxMv - minMv);
   }
-  delay(25);
+  delay(8);
 
   // 0x92: Sıcaklıklar
   if (sendDalyRs485(bmsHostAddr, 0x92, buf, 1)) {
     bms.tempMax = (int)buf[4] - 40;
     bms.tempMin = (int)buf[6] - 40;
   }
-  delay(25);
+  delay(8);
 
   // 0x93: MOSFET, Durum ve Kalan Ah
   if (sendDalyRs485(bmsHostAddr, 0x93, buf, 1)) {
@@ -561,7 +624,7 @@ void pollDalyBMS() {
     uint32_t remMah = ((uint32_t)buf[8] << 24) | ((uint32_t)buf[9] << 16) | ((uint32_t)buf[10] << 8) | buf[11];
     bms.remainAh = remMah / 1000.0f;
   }
-  delay(25);
+  delay(8);
 
   // 0x94: Hücre Sayısı, NTC Sayısı ve Döngü (Cycle) Sayısı
   if (sendDalyRs485(bmsHostAddr, 0x94, buf, 1)) {
@@ -569,7 +632,7 @@ void pollDalyBMS() {
     bms.ntcCount = buf[5];
     bms.cycles   = ((uint16_t)buf[9] << 8) | buf[10];
   }
-  delay(25);
+  delay(8);
 
   // 0x95: 16 Hücrenin Tek Tek Voltajları (6 çerçeve x 3 hücre)
   if (sendDalyRs485(bmsHostAddr, 0x95, buf, 6)) {
@@ -1010,8 +1073,15 @@ void runSmartBmsControl() {
 
   float effMaxSoc = monthlyBalActive ? 100.0f : cfg.maxSocLimit;
 
-  // EEPROM koruması: İki otomatik komut arasında en az 45 saniye bekle (termal yükseliş veya yeni ayarda bekleme!)
-  if (!thermalEscalated && !forceSmartCheck && (millis() - lastInverterCmdMs < 45000)) return;
+  // Kritik durum tespiti: %90 kesme, hücre >=3.45V/3.51V/3.55V freni, <=%20 şebekeye geçiş veya termal yükselişte 0ms ANINDA müdahale et!
+  bool urgentSocOrCellCap = (!socCapActive && effMaxSoc < 99.5f && (bms.soc >= effMaxSoc || bms.maxCellV >= 3.51f));
+  bool urgentCellSoften   = (chargeVoltStage == 0 && bms.maxCellV >= cfg.cellTaper1V);
+  bool urgentCellEmerg    = (bms.maxCellV >= cfg.cellEmergV && currentTargetChargeAmp > cfg.balChargeAmp);
+  bool urgentLowGrid      = (currentTargetOutputPop != "POP00" && (bms.soc <= cfg.socToGrid || (bms.minCellV > 1.5f && bms.minCellV <= cfg.cellLowCutV)));
+  bool urgentAction       = thermalEscalated || urgentSocOrCellCap || urgentCellSoften || urgentCellEmerg || urgentLowGrid;
+
+  // EEPROM koruması: Sadece rutin yumuşak geçişlerde 30 sn bekle; kritik olaylarda ve kullanıcı ayarında 0ms ANINDA çalıştır!
+  if (!urgentAction && !forceSmartCheck && (millis() - lastInverterCmdMs < 30000)) return;
   forceSmartCheck = false;
 
   // --- KATMAN 0: %90 ÜST SINIR VEYA HÜCRE >= 3.51V EMNİYET KESMESİ (AŞAMA 3: 52.8V / 0A DURDUR!) ---
@@ -1025,9 +1095,9 @@ void runSmartBmsControl() {
     if (!socCapActive || !alreadyAtCap) {
       if (!alreadyAtCap) {
         String rv = setInverterVoltages(52.8f, 52.8f);
-        delay(250);
+        delay(120);
         String ra = setInverterChargeAmp(10);
-        pollInverterSettings();
+        forceQpiriRefresh = true;
         inv.lastCmdSent = "[Ust Sinir %" + String(effMaxSoc, 0) + "] 52.8V/0A -> " + rv + " " + ra;
         lastInverterCmdMs = millis();
       }
@@ -1043,7 +1113,7 @@ void runSmartBmsControl() {
     String rv = setInverterVoltages(tBulk, tFloat);
     socCapActive = false;
     chargeVoltStage = (bms.maxCellV >= cfg.cellTaper1V) ? 1 : 0;
-    pollInverterSettings();
+    forceQpiriRefresh = true;
     inv.lastCmdSent = String(monthlyBalActive ? "[Aylik %100 Balans] " : "[Sinir Acildi] ") +
                       String(tBulk, 1) + "V/" + String(tFloat, 1) + "V -> " + rv;
     forceSmartCheck = true; // Bir sonraki döngüde tam akımı (100A) hemen geri yükselt
@@ -1223,6 +1293,12 @@ String buildStatusJson() {
   j += "\"sccChg\":" + String(inv.sccChgOn ? "true" : "false") + ",";
   j += "\"acChg\":" + String(inv.acChgOn ? "true" : "false") + ",";
   j += "\"temp\":" + String(inv.invTemp) + ",";
+  j += "\"igbtT\":" + String(inv.igbtTemp) + ",";
+  j += "\"dcdcT\":" + String(inv.dcdcTemp) + ",";
+  j += "\"trafoT\":" + String(inv.trafoTemp) + ",";
+  j += "\"fanPct\":" + String(inv.fanSpeedPct) + ",";
+  j += "\"chgStg\":" + String(inv.chgStageCode) + ",";
+  j += "\"warn\":\"" + inv.warnText + "\",";
   j += "\"thermLvl\":" + String(thermalLevel) + ",";
   j += "\"thermByp\":" + String(thermalBypassActive ? "true" : "false") + ",";
   j += "\"voltStg\":" + String(chargeVoltStage) + ",";
@@ -1256,7 +1332,8 @@ String buildStatusJson() {
   j += "\"ovlrst\":" + String(invSet.flagOvlRst ? "true" : "false") + ",";
   j += "\"lcd\":" + String(invSet.flagLcd ? "true" : "false") + ",";
   j += "\"srcalm\":" + String(invSet.flagSrcAlm ? "true" : "false") + ",";
-  j += "\"fltrec\":" + String(invSet.flagFltRec ? "true" : "false") + "},";
+  j += "\"fltrec\":" + String(invSet.flagFltRec ? "true" : "false") + ",";
+  j += "\"fw\":\"" + invSet.fwVer + "\"},";
 
   j += "\"cfg\":{";
   j += "\"auto\":" + String(cfg.autoManage ? "true" : "false") + ",";
@@ -1346,9 +1423,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       }
       inv.lastCmdSent = "[APK] " + used + " -> " + r;
     }
-    delay(200);
-    pollInverterSettings();
-    // Komut sonrası anında güncel durumu APK'ya geri bas
+    forceQpiriRefresh = true; // Arka planda yenile, APK yanıtını milisaniyelik anında gönder!
     String fresh = buildStatusJson();
     if (jsonMutex && xSemaphoreTake(jsonMutex, pdMS_TO_TICKS(150)) == pdTRUE) {
       cachedStatusJson = fresh;
@@ -1420,7 +1495,7 @@ void maintainMqtt() {
     }
   } else {
     mqttClient.loop();
-    if (millis() - lastMqttPubMs >= 3000) {
+    if (millis() - lastMqttPubMs >= 1500) {
       lastMqttPubMs = millis();
       String out;
       if (jsonMutex && xSemaphoreTake(jsonMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
@@ -1795,8 +1870,7 @@ void setup() {
         r = sendInverterCommand(c);
       }
       inv.lastCmdSent = used + " -> " + r;
-      delay(150);
-      pollInverterSettings();
+      forceQpiriRefresh = true; // HTTP yanıtını bekletmeden arka planda yenile (~150ms milisaniyelik tepki!)
       server.send(200, "application/json", "{\"res\":\"" + r + "\"}");
     } else {
       server.send(400, "text/plain", "Eksik komut");
@@ -1883,40 +1957,44 @@ void setup() {
 
   server.begin();
 
-  // Çekirdek 0: BMS + İnverter + Enerji Sayaçları + QPIRI/QFLAG + Gerçek Zamanlı MQTT Görevi
+  // Çekirdek 0: Yüksek Hızlı Gerçek Zamanlı BMS (750ms) + İnverter (950ms) + Q1/QPIWS + Anlık Otomasyon Görevi
   xTaskCreatePinnedToCore([](void* pv) {
     for (;;) {
       maintainMqtt();
-      if (millis() - lastBmsPollMs >= 3000) {
+      if (millis() - lastBmsPollMs >= 750) {
         pollDalyBMS();
-        if (bms.connected && (!bmsSet.valid || (millis() - lastBmsSetPollMs >= 15000))) {
+        if (bms.connected && (!bmsSet.valid || (millis() - lastBmsSetPollMs >= 20000))) {
           pollDalySettings();
           lastBmsSetPollMs = millis();
         }
         lastBmsPollMs = millis();
       }
       maintainMqtt();
-      if (millis() - lastInvPollMs >= 3500) {
+      if (millis() - lastInvPollMs >= 950) {
         pollInverter();
         updateEnergyStats(inv.connected, inv.pvPowerWatt, inv.acLoadWatt,
                           inv.workMode.indexOf("(L)") >= 0,
                           bms.connected, bms.totalVoltage, bms.current);
-        if (!invSet.valid || (millis() - lastQpiriPollMs >= 12000)) {
+        runSmartBmsControl(); // Kritik sınır/termal değişimlerinde 0ms beklemesiz ANINDA müdahale!
+        if (forceQpiriRefresh || !invSet.valid || (millis() - lastQpiriPollMs >= 15000)) {
+          forceQpiriRefresh = false;
           pollInverterSettings();
           lastQpiriPollMs = millis();
+        } else if (millis() - lastQ1PollMs >= 6000) {
+          pollInverterExtended();
+          lastQ1PollMs = millis();
         }
-        runSmartBmsControl();
         lastInvPollMs = millis();
       }
       String fresh = buildStatusJson();
       String freshStats = buildStatsJson();
-      if (jsonMutex && xSemaphoreTake(jsonMutex, pdMS_TO_TICKS(200)) == pdTRUE) {
+      if (jsonMutex && xSemaphoreTake(jsonMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         cachedStatusJson = fresh;
         cachedStatsJson  = freshStats;
         xSemaphoreGive(jsonMutex);
       }
       maintainMqtt();
-      vTaskDelay(pdMS_TO_TICKS(100));
+      vTaskDelay(pdMS_TO_TICKS(15));
     }
   }, "BmsInvWorker", 8192, nullptr, 1, nullptr, 0);
 }
