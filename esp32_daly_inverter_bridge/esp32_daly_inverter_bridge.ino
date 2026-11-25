@@ -414,24 +414,31 @@ void pollInverterExtended() {
     }
   }
 
+  delay(60);
   String ws = sendInverterCommand("QPIWS", 500);
-  if (ws.startsWith("(") && ws.length() >= 20) {
+  if (ws.startsWith("(") && ws.length() >= 25) {
     String b = ws.substring(1);
-    String w = "";
-    auto bit = [&](int n) { return (n < (int)b.length() && b[n] == '1'); };
-    if (bit(1))  w += "İnverter Arıza! ";
-    if (bit(2))  w += "Bus Yüksek! ";
-    if (bit(3))  w += "Bus Düşük! ";
-    if (bit(5))  w += "Şebeke Yok! ";
-    if (bit(6))  w += "Çıkış Kısa Devre! ";
-    if (bit(9))  w += "Aşırı Isı! ";
-    if (bit(10)) w += "Fan Kilitli! ";
-    if (bit(11)) w += "Akü Voltaj Yüksek! ";
-    if (bit(12)) w += "Akü Düşük! ";
-    if (bit(16)) w += "Aşırı Yük! ";
-    if (bit(17)) w += "EEPROM Uyarısı! ";
-    if (bit(19)) w += "PV Voltaj Yüksek! ";
-    inv.warnText = (w.length() > 0) ? w : "Uyarı Yok";
+    bool allZeroOne = true;
+    for (int k = 0; k < 24 && k < (int)b.length(); k++) {
+      if (b[k] != '0' && b[k] != '1') { allZeroOne = false; break; }
+    }
+    if (allZeroOne) {
+      String w = "";
+      auto wBit = [&](int n) -> bool { return (n < (int)b.length() && b[n] == '1'); };
+      if (wBit(1))  w += "İnverter Arıza! ";
+      if (wBit(2))  w += "Bus Yüksek! ";
+      if (wBit(3))  w += "Bus Düşük! ";
+      if (wBit(5))  w += "Şebeke Yok! ";
+      if (wBit(6))  w += "Çıkış Kısa Devre! ";
+      if (wBit(9))  w += "Aşırı Isı! ";
+      if (wBit(10)) w += "Fan Kilitli! ";
+      if (wBit(11)) w += "Akü Voltaj Yüksek! ";
+      if (wBit(12)) w += "Akü Düşük! ";
+      if (wBit(16)) w += "Aşırı Yük! ";
+      if (wBit(17)) w += "EEPROM Uyarısı! ";
+      if (wBit(19)) w += "PV Voltaj Yüksek! ";
+      inv.warnText = (w.length() > 0) ? w : "Uyarı Yok";
+    }
   }
 }
 
