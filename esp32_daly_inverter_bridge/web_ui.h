@@ -80,12 +80,21 @@ const char INDEX_HTML[] PROGMEM = R"HTMLEND(
   .sgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:10px}
   .scard{background:var(--card2);border:1px solid var(--border);border-radius:11px;padding:9px 7px;text-align:center}
   .scard .sl{font-size:10px;color:var(--sub);font-weight:600}
-  .scard .sv{font-size:15px;font-weight:800;margin-top:3px}
-  .legend{display:flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--sub);margin:8px 0 6px 0;justify-content:center}
-  .lg{display:inline-flex;align-items:center;gap:4px}
+  .scard .sv{font-size:15px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums}
+  .legend{display:flex;flex-wrap:wrap;gap:6px;font-size:11px;color:#cbd5e1;margin:8px 0 8px 0;justify-content:center}
+  .lg{display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:99px;background:#0f1728;border:1px solid #334155;cursor:pointer;font-weight:600;transition:opacity .15s,border-color .15s}
+  .lg.off{opacity:.38;border-color:#1e293b}
   .dot{width:9px;height:9px;border-radius:3px;display:inline-block}
-  .chart-wrap{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:8px;overflow-x:auto}
-  canvas{display:block;width:100%;height:210px}
+  .chart-wrap{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:8px 6px 6px 6px}
+  canvas{display:block;width:100%;height:230px;cursor:pointer;touch-action:pan-y}
+  .chart-tip{margin-top:8px;padding:8px 10px;background:#0b1325;border:1px solid #1e3a5f;border-radius:10px;font-size:11.5px;color:#e2e8f0;line-height:1.5;text-align:center;font-variant-numeric:tabular-nums}
+  .dtable-wrap{margin-top:10px;max-height:210px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;background:var(--card2)}
+  .dtable{width:100%;border-collapse:collapse;font-size:11.5px;font-variant-numeric:tabular-nums}
+  .dtable th{position:sticky;top:0;background:#162238;color:#94a3b8;font-weight:700;padding:7px 5px;text-align:right;border-bottom:1px solid var(--border)}
+  .dtable th:first-child,.dtable td:first-child{text-align:left;padding-left:9px}
+  .dtable td{padding:6px 5px;text-align:right;border-bottom:1px solid #24324d44;color:#e2e8f0}
+  .dtable tr:last-child td{border-bottom:none}
+  .dtable tr.hi-row{background:#1e3a5f44}
 
   .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:#065f46;color:#ecfdf5;padding:10px 18px;border-radius:99px;font-size:13px;font-weight:700;box-shadow:0 8px 25px rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .25s;z-index:99;border:1px solid #10b981;white-space:nowrap}
   .toast.show{opacity:1}
@@ -325,15 +334,15 @@ const char INDEX_HTML[] PROGMEM = R"HTMLEND(
 
 <!-- GÜNLÜK & AYLIK ENERJİ İSTATİSTİKLERİ + GRAFİKLER -->
 <div class="card">
-  <h3><span>📊 Enerji İstatistikleri &amp; Aylık Grafik</span><span id="statDate" class="pill info">--.--.----</span></h3>
+  <h3><span>📊 Enerji İstatistikleri &amp; Grafikler</span><span id="statDate" class="pill info">--.--.----</span></h3>
 
   <div class="btns" style="margin-bottom:10px">
-    <button id="tabMonth" class="act" onclick="setChartTab('month')">📅 Bu Ay (30 Gün)</button>
-    <button id="tabToday" onclick="setChartTab('today')">☀️ Bugün (24 Saat)</button>
+    <button id="tabToday" class="act" onclick="setChartTab('today')">☀️ Bugün (24 Saat)</button>
+    <button id="tabMonth" onclick="setChartTab('month')">📅 Son 30 Gün</button>
   </div>
 
   <div class="sgrid">
-    <div class="scard"><div class="sl">☀️ Panel Üretimi</div><div class="sv" style="color:#fbbf24" id="stPv">0.00 kWh</div></div>
+    <div class="scard"><div class="sl">☀️ Solar Üretim</div><div class="sv" style="color:#fbbf24" id="stPv">0.00 kWh</div></div>
     <div class="scard"><div class="sl">🏠 Ev Tüketimi</div><div class="sv" style="color:#38bdf8" id="stLoad">0.00 kWh</div></div>
     <div class="scard"><div class="sl">🔋 Akü Dolumu</div><div class="sv" style="color:#10b981" id="stChg">0.00 kWh</div></div>
     <div class="scard"><div class="sl">🔋 Akü Kullanımı</div><div class="sv" style="color:#2dd4bf" id="stDis">0.00 kWh</div></div>
@@ -341,24 +350,36 @@ const char INDEX_HTML[] PROGMEM = R"HTMLEND(
     <div class="scard"><div class="sl">⚡ Şebeke Şarjı</div><div class="sv" style="color:#c084fc" id="stGridChg">0.00 kWh</div></div>
   </div>
 
-  <div class="row" style="padding:4px 0 8px 0">
-    <span>☀️ Güneşten Karşılama Oranı</span>
-    <strong id="stSolarPct" style="color:#34d399">%100</strong>
+  <div class="row" style="padding:4px 0 4px 0;border-bottom:none">
+    <span id="stSolarLbl">☀️ Güneşten Karşılama Oranı</span>
+    <strong id="stSolarPct" style="color:#34d399">%100.0</strong>
   </div>
+  <div class="soc-bar-bg" style="height:8px;margin:2px 0 6px 0"><div id="solarBar" class="soc-bar-fill" style="width:100%"></div></div>
+  <div id="stAvgLine" style="font-size:11px;color:var(--sub);text-align:right;margin-bottom:4px"></div>
 
-  <div class="legend">
-    <span class="lg"><i class="dot" style="background:#fbbf24"></i>Panel Dolumu</span>
-    <span class="lg"><i class="dot" style="background:#38bdf8"></i>Ev Kullanımı</span>
-    <span class="lg"><i class="dot" style="background:#fb923c"></i>Şebeke Çıkışı</span>
-    <span class="lg"><i class="dot" style="background:#c084fc"></i>Şebeke Şarjı</span>
+  <div class="legend" id="chartLegend">
+    <span class="lg" id="lg_pv"   onclick="toggleSeries('pv')"><i class="dot" style="background:#fbbf24"></i>Solar Üretim</span>
+    <span class="lg" id="lg_load" onclick="toggleSeries('load')"><i class="dot" style="background:#38bdf8"></i>Ev Tüketimi</span>
+    <span class="lg" id="lg_chg"  onclick="toggleSeries('chg')"><i class="dot" style="background:#10b981"></i>Akü Dolum</span>
+    <span class="lg off" id="lg_dis" onclick="toggleSeries('dis')"><i class="dot" style="background:#2dd4bf"></i>Akü Kullanım</span>
+    <span class="lg" id="lg_grid" onclick="toggleSeries('grid')"><i class="dot" style="background:#fb923c"></i>Şebeke</span>
   </div>
 
   <div class="chart-wrap">
-    <canvas id="energyChart" height="210"></canvas>
+    <canvas id="energyChart" height="230"></canvas>
+  </div>
+
+  <div id="chartTip" class="chart-tip">Detay görmek için grafikte herhangi bir saat veya güne dokunun</div>
+
+  <div id="dayTableWrap" class="dtable-wrap" style="display:none">
+    <table class="dtable">
+      <thead><tr><th>Tarih</th><th>☀️ Solar</th><th>🏠 Ev</th><th>🔋 Dol/Kul</th><th>🔌 Şebeke</th></tr></thead>
+      <tbody id="dayTableBody"></tbody>
+    </table>
   </div>
 
   <div class="btns" style="margin-top:10px">
-    <button onclick="resetStats()" style="font-size:11.5px;color:#fca5a5;border-color:#7f1d1d">🗑️ Aylık Sayaçları Sıfırla</button>
+    <button onclick="resetStats()" style="font-size:11.5px;color:#fca5a5;border-color:#7f1d1d">🗑️ Tüm Sayaçları Sıfırla</button>
   </div>
 </div>
 
@@ -381,7 +402,10 @@ let firstBmsSet = true;
 let curSet = {};
 let curBms = {};
 let curStats = null;
-let chartTab = 'month';
+let chartTab = 'today';
+let selChartIdx = -1;
+let chartGeom = { padL: 42, cW: 300, n: 1, rows: [] };
+let seriesOn = { pv: true, load: true, chg: true, dis: false, grid: true };
 
 function toast(msg){
   const el = document.getElementById('toast');
@@ -741,13 +765,23 @@ async function saveCfg(){
 
 function setChartTab(tab){
   chartTab = tab;
+  selChartIdx = -1;
   document.getElementById('tabMonth').className = (tab === 'month') ? 'act' : '';
   document.getElementById('tabToday').className = (tab === 'today') ? 'act' : '';
   renderStats();
 }
 
+function toggleSeries(key){
+  seriesOn[key] = !seriesOn[key];
+  const anyOn = Object.values(seriesOn).some(v => v);
+  if(!anyOn) seriesOn[key] = true; // En az 1 seri açık kalsın
+  const el = document.getElementById('lg_' + key);
+  if(el) el.className = seriesOn[key] ? 'lg' : 'lg off';
+  drawChart();
+}
+
 async function resetStats(){
-  if(!confirm('Tüm günlük ve aylık (30 günlük) kWh enerji sayaçları sıfırlansın mı?')) return;
+  if(!confirm('Tüm günlük ve 30 günlük kWh enerji sayaçları sıfırlansın mı?')) return;
   if(IS_LOCAL_ESP){
     await fetch('/api/stats_reset');
     pollLocalStats();
@@ -757,11 +791,20 @@ async function resetStats(){
   pubCmd('RESET_STATS');
 }
 
+function niceMax(v){
+  if(v <= 0.2) return 0.4;
+  const raw = v * 1.15;
+  const steps = [0.4, 0.8, 1.2, 2, 3, 4, 5, 6, 8, 10, 12, 16, 20, 24, 30, 40, 50, 60, 80, 100];
+  for(const s of steps) if(raw <= s) return s;
+  return Math.ceil(raw / 20) * 20;
+}
+
 function renderStats(){
   if(!curStats) return;
   document.getElementById('statDate').innerText = curStats.dt || '--.--.----';
-  const src = (chartTab === 'month') ? (curStats.month || {}) : (curStats.today || {});
-  const dec = (chartTab === 'month') ? 2 : 3;
+  const isMonth = (chartTab === 'month');
+  const src = isMonth ? (curStats.month || {}) : (curStats.today || {});
+  const dec = isMonth ? 2 : 3;
   const pv = Number(src.pv||0), ld = Number(src.load||0), ch = Number(src.chg||0),
         ds = Number(src.dis||0), go = Number(src.gridOut||0), gc = Number(src.gridChg||0);
 
@@ -772,19 +815,84 @@ function renderStats(){
   document.getElementById('stGridOut').innerText = go.toFixed(dec) + ' kWh';
   document.getElementById('stGridChg').innerText = gc.toFixed(dec) + ' kWh';
 
-  const totalNeed = ld + gc;
-  const solarShare = totalNeed > 0.001 ? Math.max(0, Math.min(100, ((totalNeed - (go + gc)) / totalNeed) * 100)) : 100;
+  // Doğru Güneşten Karşılama Oranı: Ev tüketiminden şebekeye bağımlı kısmı düş
+  const gridTot = go + gc;
+  const solarShare = ld > 0.001 ? Math.max(0, Math.min(100, ((ld - Math.min(ld, gridTot)) / ld) * 100)) : 100;
   document.getElementById('stSolarPct').innerText = '%' + solarShare.toFixed(1) + ' Güneş / Akü';
+  document.getElementById('solarBar').style.width = solarShare.toFixed(1) + '%';
+
+  const days = curStats.days || [];
+  const dCnt = Math.max(Number(curStats.daysCnt || days.length || 1), 1);
+  const avgEl = document.getElementById('stAvgLine');
+  if(isMonth){
+    avgEl.innerText = `${dCnt} Günlük Toplam • Günlük Ort: ☀️ ${(pv/dCnt).toFixed(2)} kWh | 🏠 ${(ld/dCnt).toFixed(2)} kWh | 🔌 ${(gridTot/dCnt).toFixed(2)} kWh`;
+  } else {
+    const netBat = ch - ds;
+    avgEl.innerText = `Bugün Net Akü Dengesi: ${netBat >= 0 ? '+' : ''}${netBat.toFixed(2)} kWh • Toplam Şebeke: ${gridTot.toFixed(2)} kWh`;
+  }
+
+  // Son 30 Gün sekmesinde günlük özet tablosunu doldur (en yeni gün en üstte)
+  const tblWrap = document.getElementById('dayTableWrap');
+  if(isMonth && days.length > 0){
+    tblWrap.style.display = 'block';
+    let rowsHtml = '';
+    for(let k = days.length - 1; k >= 0; k--){
+      const d = days[k];
+      const dPv = Number(d[1]||0), dLd = Number(d[2]||0), dCh = Number(d[3]||0);
+      // Geriye uyumlu: V2'de 7 eleman [tarih,pv,load,chg,dis,go,gc], V1'de 6 eleman [tarih,pv,load,chg,go,gc]
+      const hasDis = d.length >= 7;
+      const dDs = hasDis ? Number(d[4]||0) : 0;
+      const dGr = hasDis ? (Number(d[5]||0) + Number(d[6]||0)) : (Number(d[4]||0) + Number(d[5]||0));
+      const isToday = (k === days.length - 1);
+      rowsHtml += `<tr class="${isToday?'hi-row':''}" onclick="selectChartIdx(${k})">
+        <td><b>${d[0]}</b>${isToday?' <small style="color:#34d399">(Bugün)</small>':''}</td>
+        <td style="color:#fbbf24">${dPv.toFixed(2)}</td>
+        <td style="color:#38bdf8">${dLd.toFixed(2)}</td>
+        <td style="color:#10b981">${dCh.toFixed(1)} / <span style="color:#2dd4bf">${dDs.toFixed(1)}</span></td>
+        <td style="color:${dGr>0.01?'#fb923c':'#64748b'}">${dGr.toFixed(2)}</td>
+      </tr>`;
+    }
+    document.getElementById('dayTableBody').innerHTML = rowsHtml;
+  } else {
+    tblWrap.style.display = 'none';
+  }
 
   drawChart();
+}
+
+function selectChartIdx(idx){
+  selChartIdx = idx;
+  drawChart();
+}
+
+function updateChartTip(rows, idx){
+  const el = document.getElementById('chartTip');
+  if(!rows || rows.length === 0){ el.innerText = 'Henüz kayıtlı enerji verisi yok'; return; }
+  const k = (idx >= 0 && idx < rows.length) ? idx : (rows.length - 1);
+  const r = rows[k];
+  const lbl = (chartTab === 'today') ? (r.lbl + ':00 – ' + r.lbl + ':59') : ('Tarih ' + r.lbl);
+  el.innerHTML = `<b>📌 ${lbl}</b> &rarr; <span style="color:#fbbf24">☀️ ${r.pv.toFixed(2)}</span> • <span style="color:#38bdf8">🏠 ${r.load.toFixed(2)}</span> • <span style="color:#10b981">🔋 +${r.chg.toFixed(2)}</span> / <span style="color:#2dd4bf">-${r.dis.toFixed(2)}</span> • <span style="color:#fb923c">🔌 ${r.grid.toFixed(2)} kWh</span>`;
+}
+
+function roundTopBar(ctx, x, y, w, h, r){
+  const rad = Math.min(r, w / 2, h);
+  ctx.beginPath();
+  ctx.moveTo(x, y + h);
+  ctx.lineTo(x, y + rad);
+  ctx.quadraticCurveTo(x, y, x + rad, y);
+  ctx.lineTo(x + w - rad, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + rad);
+  ctx.lineTo(x + w, y + h);
+  ctx.closePath();
+  ctx.fill();
 }
 
 function drawChart(){
   const cv = document.getElementById('energyChart');
   if(!cv || !curStats) return;
   const dpr = window.devicePixelRatio || 1;
-  const W = Math.max(cv.parentElement.clientWidth - 16, 300);
-  const H = 210;
+  const W = Math.max(cv.parentElement.clientWidth - 12, 300);
+  const H = 230;
   cv.width = W * dpr;
   cv.height = H * dpr;
   cv.style.width = W + 'px';
@@ -793,69 +901,147 @@ function drawChart(){
   ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, W, H);
 
-  const padL = 36, padR = 10, padT = 16, padB = 26;
+  const padL = 42, padR = 12, padT = 22, padB = 28;
   const cW = W - padL - padR, cH = H - padT - padB;
 
-  let labels = [], s1 = [], s2 = [], s3 = [], s4 = [];
+  const rows = [];
   if(chartTab === 'month'){
     const days = curStats.days || [];
     days.forEach(d => {
-      labels.push(d[0]);
-      s1.push(Number(d[1]||0)); // PV
-      s2.push(Number(d[2]||0)); // Load
-      s3.push(Number(d[4]||0)); // GridOut
-      s4.push(Number(d[5]||0)); // GridChg
+      const hasDis = d.length >= 7;
+      rows.push({
+        lbl:  d[0],
+        pv:   Number(d[1]||0),
+        load: Number(d[2]||0),
+        chg:  Number(d[3]||0),
+        dis:  hasDis ? Number(d[4]||0) : 0,
+        grid: hasDis ? (Number(d[5]||0) + Number(d[6]||0)) : (Number(d[4]||0) + Number(d[5]||0))
+      });
     });
   } else {
-    const hp = curStats.hPv || [], hl = curStats.hLoad || [], hg = curStats.hGrid || [];
+    const hp = curStats.hPv||[], hl = curStats.hLoad||[], hc = curStats.hChg||[], hd = curStats.hDis||[], hg = curStats.hGrid||[];
     for(let h=0; h<24; h++){
-      labels.push((h<10?'0':'')+h);
-      s1.push(Number(hp[h]||0));
-      s2.push(Number(hl[h]||0));
-      s3.push(Number(hg[h]||0));
-      s4.push(0);
+      rows.push({
+        lbl:  (h<10?'0':'')+h,
+        pv:   Number(hp[h]||0),
+        load: Number(hl[h]||0),
+        chg:  Number(hc[h]||0),
+        dis:  Number(hd[h]||0),
+        grid: Number(hg[h]||0)
+      });
     }
   }
 
-  let maxV = 0.2;
-  for(let i=0;i<labels.length;i++) maxV = Math.max(maxV, s1[i], s2[i], s3[i], s4[i]);
-  maxV *= 1.15;
+  const n = Math.max(rows.length, 1);
+  if(selChartIdx < 0 || selChartIdx >= rows.length){
+    if(chartTab === 'today' && curStats.hr >= 0 && curStats.hr < 24) selChartIdx = curStats.hr;
+    else selChartIdx = rows.length - 1;
+  }
+  chartGeom = { padL, cW, n, rows };
+  updateChartTip(rows, selChartIdx);
 
-  // Yatay kılavuz çizgileri
-  ctx.strokeStyle = '#24324d';
-  ctx.fillStyle = '#94a3b8';
+  // Yalnızca aktif (ve şebeke için >0 veri varsa) serilere sütun alanı ayır -> çubuklar daima tam ortalanır!
+  const palette = [
+    { key:'pv',   col:'#fbbf24' },
+    { key:'load', col:'#38bdf8' },
+    { key:'chg',  col:'#10b981' },
+    { key:'dis',  col:'#2dd4bf' },
+    { key:'grid', col:'#fb923c' }
+  ];
+  const activeSeries = palette.filter(p => {
+    if(!seriesOn[p.key]) return false;
+    if(p.key === 'grid' && !rows.some(r => r.grid > 0.005)) return false;
+    if((p.key === 'chg' || p.key === 'dis') && chartTab === 'today' && !rows.some(r => r[p.key] > 0.005)) return false;
+    return true;
+  });
+  if(activeSeries.length === 0) activeSeries.push(palette[0]);
+
+  let rawMax = 0;
+  rows.forEach(r => activeSeries.forEach(s => { if(r[s.key] > rawMax) rawMax = r[s.key]; }));
+  const maxV = niceMax(rawMax);
+
+  // Y-ekseni birimi ve yatay kılavuz çizgileri
   ctx.font = '10px system-ui, sans-serif';
+  ctx.fillStyle = '#64748b';
+  ctx.textAlign = 'left';
+  ctx.fillText('kWh', 4, 12);
+
   ctx.lineWidth = 1;
+  ctx.textAlign = 'right';
   for(let g=0; g<=4; g++){
     const y = padT + cH - (cH * g / 4);
+    ctx.strokeStyle = (g === 0) ? '#334155' : '#1e293b';
     ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
     const val = (maxV * g / 4);
-    ctx.fillText(val >= 10 ? val.toFixed(0) : val.toFixed(2), 2, y + 3);
+    ctx.fillStyle = '#94a3b8';
+    ctx.fillText(maxV >= 10 ? val.toFixed(0) : val.toFixed(1), padL - 6, y + 3.5);
   }
 
-  const n = Math.max(labels.length, 1);
   const slotW = cW / n;
-  const cols = ['#fbbf24', '#38bdf8', '#fb923c', '#c084fc'];
-  const series = [s1, s2, s3, s4];
-  const barCnt = (chartTab === 'month') ? 4 : 3;
-  const barW = Math.max(2, Math.min(10, (slotW * 0.78) / barCnt));
+  const barCnt = activeSeries.length;
+  const gap = (n <= 8) ? 4 : 1.2;
+  const maxSingleW = (n <= 6) ? 28 : ((n <= 14) ? 16 : 9);
+  const barW = Math.max(2.5, Math.min(maxSingleW, (slotW * 0.72 - gap * (barCnt - 1)) / barCnt));
+  const groupW = barW * barCnt + gap * (barCnt - 1);
 
-  for(let i=0; i<labels.length; i++){
-    const x0 = padL + i * slotW + (slotW - barW * barCnt) / 2;
-    for(let b=0; b<barCnt; b++){
-      const v = series[b][i] || 0;
-      if(v <= 0) continue;
-      const bh = Math.max(2, (v / maxV) * cH);
-      ctx.fillStyle = cols[b];
-      ctx.fillRect(x0 + b * barW, padT + cH - bh, barW - 0.8, bh);
+  for(let i=0; i<rows.length; i++){
+    const cx = padL + (i + 0.5) * slotW;
+
+    // Seçili saat/gün arka plan vurgusu
+    if(i === selChartIdx){
+      ctx.fillStyle = 'rgba(56, 189, 248, 0.10)';
+      const hw = Math.min(slotW * 0.92, Math.max(groupW + 14, 22));
+      ctx.fillRect(cx - hw / 2, padT, hw, cH);
     }
-    const step = (labels.length > 14) ? Math.ceil(labels.length / 8) : 1;
-    if(i % step === 0 || i === labels.length - 1){
-      ctx.fillStyle = '#94a3b8';
-      ctx.fillText(labels[i], padL + i * slotW + 2, H - 8);
+
+    const x0 = cx - groupW / 2;
+    for(let b=0; b<barCnt; b++){
+      const s = activeSeries[b];
+      const v = rows[i][s.key] || 0;
+      if(v <= 0.001) continue;
+      const bh = Math.max(3, (v / maxV) * cH);
+      const bx = x0 + b * (barW + gap);
+      const by = padT + cH - bh;
+      ctx.fillStyle = s.col;
+      roundTopBar(ctx, bx, by, barW, bh, 3.5);
+
+      // Az gün varsa (<=7 gün) sütun üstüne net kWh değeri yaz
+      if(chartTab === 'month' && n <= 7 && barW >= 14){
+        ctx.fillStyle = '#e2e8f0';
+        ctx.font = 'bold 9.5px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(v >= 10 ? v.toFixed(1) : v.toFixed(2), bx + barW / 2, by - 4);
+      }
+    }
+
+    // X-ekseni etiketi (TAM ORTALANMIŞ!)
+    const showLbl = (chartTab === 'month')
+      ? (n <= 10 || i % Math.ceil(n / 8) === 0 || i === n - 1)
+      : (i % 3 === 0 || i === 23);
+    if(showLbl){
+      const isLiveHr = (chartTab === 'today' && i === curStats.hr);
+      ctx.fillStyle = (i === selChartIdx || isLiveHr) ? '#38bdf8' : '#94a3b8';
+      ctx.font = (i === selChartIdx || isLiveHr) ? 'bold 10.5px system-ui, sans-serif' : '10px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(rows[i].lbl, cx, H - 9);
     }
   }
 }
+
+(function bindChartEvents(){
+  const cv = document.getElementById('energyChart');
+  if(!cv) return;
+  const pick = (clientX) => {
+    const rect = cv.getBoundingClientRect();
+    const x = clientX - rect.left - chartGeom.padL;
+    if(x < 0 || x > chartGeom.cW || chartGeom.n <= 0) return;
+    const idx = Math.max(0, Math.min(chartGeom.n - 1, Math.floor((x / chartGeom.cW) * chartGeom.n)));
+    if(idx !== selChartIdx){ selChartIdx = idx; drawChart(); }
+  };
+  cv.addEventListener('click', e => pick(e.clientX));
+  cv.addEventListener('mousemove', e => { if(e.buttons === 0) pick(e.clientX); });
+  cv.addEventListener('touchstart', e => { if(e.touches[0]) pick(e.touches[0].clientX); }, { passive: true });
+})();
 
 window.addEventListener('resize', drawChart);
 connectMqtt();

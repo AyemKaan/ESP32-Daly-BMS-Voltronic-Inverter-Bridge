@@ -1798,6 +1798,7 @@ void setup() {
 
   // Kablosuz (Wi-Fi üzerinden) Yazılım Güncelleme (Bir daha USB veya BOOT tuşu gerekmez!)
   server.on("/update", HTTP_POST, []() {
+    saveEnergyStore(); // Yeniden başlamadan önce son kWh sayaçlarını NVS Flash'a kaydet!
     server.sendHeader("Connection", "close");
     server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
     delay(500);
