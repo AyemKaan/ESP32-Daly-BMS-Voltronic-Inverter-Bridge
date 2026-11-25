@@ -41,17 +41,18 @@ const char INDEX_HTML[] PROGMEM = R"HTMLEND(
   .view{display:none}
   .view.show{display:block}
 
-  /* Kompakt Tek Ekran Canlı Sensör Kartları */
+  /* Kompakt Tek Ekran 8'li Canlı Sensör Kartları */
   .flow{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
-  .fcard{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;cursor:pointer;transition:border-color .15s,transform .1s;position:relative}
+  @media(min-width:640px){.flow{grid-template-columns:repeat(4,1fr)}}
+  .fcard{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:11px 12px;cursor:pointer;transition:border-color .15s,transform .1s;position:relative}
   .fcard:active{transform:scale(.985)}
   .fcard:hover{border-color:#334c75}
   .fcard .top{display:flex;justify-content:space-between;align-items:center;gap:4px}
   .fcard .lbl{font-size:10.5px;color:var(--sub);font-weight:700;text-transform:uppercase;letter-spacing:.3px}
-  .fcard .hint{font-size:10px;color:#64748b;font-weight:600}
-  .fcard .val{font-size:22px;font-weight:800;margin-top:4px;line-height:1.15;font-variant-numeric:tabular-nums}
-  .fcard .det{font-size:11.5px;color:#cbd5e1;margin-top:4px;font-variant-numeric:tabular-nums}
-  .fcard .det2{font-size:10.5px;color:var(--sub);margin-top:2px;font-variant-numeric:tabular-nums}
+  .fcard .hint{font-size:9.5px;color:#64748b;font-weight:700}
+  .fcard .val{font-size:20px;font-weight:800;margin-top:4px;line-height:1.15;font-variant-numeric:tabular-nums}
+  .fcard .det{font-size:11px;color:#cbd5e1;margin-top:4px;font-variant-numeric:tabular-nums}
+  .fcard .det2{font-size:10px;color:var(--sub);margin-top:2px;font-variant-numeric:tabular-nums}
 
   .soc-bar-bg{height:7px;background:#070c17;border-radius:99px;overflow:hidden;border:1px solid var(--border);margin-top:6px}
   .soc-bar-fill{height:100%;background:linear-gradient(90deg,#059669,#34d399);border-radius:99px;transition:width .4s ease}
@@ -167,68 +168,76 @@ const char INDEX_HTML[] PROGMEM = R"HTMLEND(
 <!-- ==================== 1. GÖRÜNÜM: CANLI EKRAN (SADE & DERLİ TOPLU) ==================== -->
 <div id="viewLive" class="view show">
 
-  <!-- 4'LÜ ANA SENSÖR KARTLARI (Üstüne basınca ilgili ayrıntıyı / ayarı açar) -->
+  <!-- 8'Lİ SİMETRİK CANLI SENSÖR KARTLARI (Tüm Voltaj, Watt, Şebeke, Şarj ve Isılar Tek Bakışta!) -->
   <div class="flow">
+    <!-- 1. Akü & BMS -->
     <div class="fcard" onclick="toggleDetail('cells')">
       <div class="top"><span class="lbl">🔋 Akü (BMS)</span><span class="hint">16 Hücre ▾</span></div>
       <div class="val" style="color:var(--green)" id="soc">%--.-</div>
       <div class="det" id="bmsVW">--.- V • --.- A (--- W)</div>
-      <div class="det2" id="bmsAhSub">--- Ah / 280 Ah • -- Döngü</div>
+      <div class="det2" id="bmsAhSub">---/280Ah • -- Döngü</div>
       <div class="soc-bar-bg"><div id="socBar" class="soc-bar-fill" style="width:0%"></div></div>
     </div>
 
+    <!-- 2. Solar Paneller -->
     <div class="fcard" onclick="scrollToChart()">
-      <div class="top"><span class="lbl">☀️ Solar Paneller</span><span class="hint" id="pvDayHint">Bugün: -- kWh</span></div>
+      <div class="top"><span class="lbl">☀️ Solar Giriş</span><span class="hint" id="sccBadge">Beklemede</span></div>
       <div class="val" style="color:var(--amber)" id="pvW">--- W</div>
       <div class="det" id="pvVA">---.- V • --.- A</div>
-      <div class="det2" id="pvSub">10×550W MPPT Girişi</div>
+      <div class="det2" id="pvDayHint">Bugün: -- kWh</div>
     </div>
 
+    <!-- 3. Ev / AC Çıkış -->
     <div class="fcard" onclick="toggleDetail('inv')">
-      <div class="top"><span class="lbl">🏠 Ev / AC Çıkış</span><span class="hint">Detay ▾</span></div>
+      <div class="top"><span class="lbl">🏠 Ev / AC Çıkış</span><span class="hint" id="outSrcBadge">Akü/Solar</span></div>
       <div class="val" style="color:var(--blue)" id="loadW">--- W</div>
-      <div class="det" id="loadDet">Yük: %-- • Çıkış: ---V</div>
+      <div class="det" id="loadDet">Yük: %-- • ---V Çıkış</div>
       <div class="det2" id="loadDayHint">Bugün Çıkış: -- kWh</div>
     </div>
 
+    <!-- 4. Şebeke Girişi (TEDAŞ) -->
     <div class="fcard" onclick="openSettingsTab('inv')">
-      <div class="top"><span class="lbl">🔌 Mod &amp; Şebeke</span><span class="hint">⚙️ Ayar ▸</span></div>
-      <div class="val" style="font-size:15.5px;margin-top:6px;color:var(--purple)" id="modeShort">Bekleniyor</div>
-      <div class="det" id="gridDet">TEDAŞ: --- V / -- Hz</div>
-      <div class="det2" id="prioSub">SBU • OSO • Maks --A</div>
+      <div class="top"><span class="lbl">🔌 Şebeke Girişi</span><span class="hint" id="gridStateBadge">Kontrol...</span></div>
+      <div class="val" style="color:var(--purple)" id="gridVBig">--- V</div>
+      <div class="det" id="gridDet">Frekans: --.- Hz</div>
+      <div class="det2" id="modeShort">Mod: Bekleniyor</div>
+    </div>
+
+    <!-- 5. Şebekeden Şarj (Şarj Ediyor mu / Etmiyor mu?) -->
+    <div class="fcard" onclick="openSettingsTab('inv')">
+      <div class="top"><span class="lbl">⚡ Şebeke Şarjı</span><span class="hint">⚙️ Ayar ▸</span></div>
+      <div class="val" style="font-size:16.5px;margin-top:6px;color:#94a3b8" id="acChgState">Şarj Etmiyor</div>
+      <div class="det" id="acChgDet">Şebeke Şarj: 0 A</div>
+      <div class="det2" id="prioSub">Kaynak: OSO • Limit: 10A</div>
+    </div>
+
+    <!-- 6. İnverter Isısı -->
+    <div class="fcard" onclick="openSettingsTab('auto')">
+      <div class="top"><span class="lbl">🌡️ İnverter Isısı</span><span class="hint" id="invThermHint">Normal</span></div>
+      <div class="val" style="color:#34d399" id="invTempBig">-- °C</div>
+      <div class="det" id="actVoltAmp">Hedef: --.-V • --A</div>
+      <div class="det2" id="invThermLim">Koruma: 65 / 72 / 78°C</div>
+    </div>
+
+    <!-- 7. BMS / Pil Isısı -->
+    <div class="fcard" onclick="toggleDetail('bms')">
+      <div class="top"><span class="lbl">🌡️ BMS / Pil Isısı</span><span class="hint" id="bmsMosHint">MOS Açık</span></div>
+      <div class="val" style="color:#38bdf8" id="bmsTempBig">-- °C</div>
+      <div class="det" id="mos">Şarj: Açık • Deş: Açık</div>
+      <div class="det2" id="bmsFault" style="color:#34d399">Arıza Yok</div>
+    </div>
+
+    <!-- 8. Hücre Dengesi -->
+    <div class="fcard" onclick="toggleDetail('cells')">
+      <div class="top"><span class="lbl">⚖️ Hücre Dengesi</span><span class="hint">Detay ▾</span></div>
+      <div class="val" style="color:#34d399" id="diffBig">Δ -- mV</div>
+      <div class="det" id="minMax">-.--- / -.--- V</div>
+      <div class="det2" id="balCellSub">1A Aktif Balans: Pasif</div>
     </div>
   </div>
 
-  <!-- TÜM KRİTİK VOLTAJ / SICAKLIK SENSÖRLERİ + TIKLAYINCA AÇILAN AYRINTI SEKMELERİ -->
+  <!-- AKILLI OTOMASYON ÇUBUĞU + TIKLAYINCA AÇILAN AYRINTI SEKMELERİ -->
   <div class="card">
-    <h3>
-      <span>📡 Canlı Sensörler &amp; Durum</span>
-      <div style="display:flex;gap:5px;flex-wrap:wrap">
-        <span id="diffBadge" class="pill ok" onclick="toggleDetail('cells')" style="cursor:pointer">Δ -- mV</span>
-        <span id="invTemp" class="pill ok" onclick="openSettingsTab('auto')" style="cursor:pointer">🌡️ İnv: --°C</span>
-      </div>
-    </h3>
-
-    <div class="sstrip">
-      <div class="mchip" onclick="toggleDetail('cells')">
-        <div class="k">En Yüksek / Düşük Hücre</div>
-        <div class="v" id="minMax">-.--- / -.---V</div>
-      </div>
-      <div class="mchip" onclick="toggleDetail('bms')">
-        <div class="k">Pil Isısı &amp; MOSFET</div>
-        <div class="v" id="mos">--°C • Açık</div>
-      </div>
-      <div class="mchip" onclick="openSettingsTab('inv')">
-        <div class="k">Aktif Şarj Hedefi</div>
-        <div class="v" id="actVoltAmp">--.-V • --A</div>
-      </div>
-      <div class="mchip" onclick="toggleDetail('bms')">
-        <div class="k">BMS Alarm / Durum</div>
-        <div class="v" id="bmsFault" style="color:#34d399">Arıza Yok</div>
-      </div>
-    </div>
-
-    <!-- Üstüne Basınca Otomasyon Ayar Sekmesini Açan Akıllı Durum Çubuğu -->
     <div class="smart-bar" onclick="openSettingsTab('auto')">
       <div>
         <div class="stxt" id="smartMsg">Otomasyon Hazır</div>
@@ -628,7 +637,7 @@ function renderData(d){
   document.getElementById('invPill').className = 'pill ' + (i.ok?'ok':'no');
   document.getElementById('invPill').innerText = 'İNV: ' + (i.ok?'OK':'YOK');
 
-  // 1) Ana Kartlar
+  // 1) 8'li Ana Sensör Kartları
   const soc = Number(b.soc||0);
   const stNames = ['Boşta', 'Şarj ⚡', 'Deşarj 🔋'];
   document.getElementById('soc').innerText = '%' + soc.toFixed(1);
@@ -636,43 +645,91 @@ function renderData(d){
   document.getElementById('bmsVW').innerText = Number(b.v||0).toFixed(2) + 'V • ' + (b.a>=0?'+':'') + Number(b.a||0).toFixed(1) + 'A (' + (b.w||0) + 'W)';
   document.getElementById('bmsAhSub').innerText = Number(b.ah||0).toFixed(0) + '/' + Number(bs.ratedAh||280).toFixed(0) + 'Ah • ' + (b.cyc||0) + ' Döngü • ' + (stNames[b.st]||'-');
 
-  document.getElementById('pvW').innerText = (i.pvW||0) + ' W';
+  const pvW = Number(i.pvW||0);
+  const sccActive = !!(i.sccChg || pvW >= 15);
+  document.getElementById('pvW').innerText = pvW + ' W';
   document.getElementById('pvVA').innerText = Number(i.pvV||0).toFixed(1) + ' V • ' + Number(i.pvA||0).toFixed(1) + ' A';
+  const sccEl = document.getElementById('sccBadge');
+  sccEl.innerText = sccActive ? '☀️ Şarjda' : 'Gece / Boşta';
+  sccEl.style.color = sccActive ? '#34d399' : '#64748b';
 
+  const isLine = String(i.mode||'').indexOf('(L)') >= 0;
   document.getElementById('loadW').innerText = (i.loadW||0) + ' W';
   document.getElementById('loadDet').innerText = 'Yük: %' + (i.loadPct||0) + ' • ' + Number(i.outV||0).toFixed(0) + 'V Çıkış';
+  const outSrcEl = document.getElementById('outSrcBadge');
+  outSrcEl.innerText = isLine ? '🔌 Şebekede' : '🔋 Akü/Solar';
+  outSrcEl.style.color = isLine ? '#fb923c' : '#38bdf8';
 
+  // Şebeke Girişi Kartı
+  const gV = Number(i.gridV||0), gHz = Number(i.gridHz||0);
+  const gridPresent = gV >= 150;
+  document.getElementById('gridVBig').innerText = gV.toFixed(0) + ' V';
+  document.getElementById('gridVBig').style.color = gridPresent ? '#a78bfa' : '#f87171';
+  const gStEl = document.getElementById('gridStateBadge');
+  gStEl.innerText = gridPresent ? '🟢 Şebeke Var' : '🔴 Şebeke Yok';
+  gStEl.style.color = gridPresent ? '#34d399' : '#f87171';
+  document.getElementById('gridDet').innerText = 'Frekans: ' + gHz.toFixed(1) + ' Hz';
   document.getElementById('modeShort').innerText = i.mode || 'Bilinmiyor';
-  document.getElementById('gridDet').innerText = 'TEDAŞ: ' + Number(i.gridV||0).toFixed(0) + 'V / ' + Number(i.gridHz||0).toFixed(1) + 'Hz';
 
-  // 2) Sensör Şeridi & Rozetler
-  document.getElementById('minMax').innerText = Number(b.maxV||0).toFixed(3) + ' / ' + Number(b.minV||0).toFixed(3) + 'V';
-  document.getElementById('diffBadge').innerText = 'Δ ' + (b.diff||0) + ' mV';
-  document.getElementById('diffBadge').className = 'pill ' + ((b.diff||0)>40?'warn':'ok');
+  // Şebekeden Şarj Kartı (Şarj Ediyor mu / Etmiyor mu?)
+  const isAcCharging = !!(i.acChg || (isLine && Number(i.chgA||0) > 0 && pvW < 30));
+  const acStEl = document.getElementById('acChgState');
+  const acDetEl = document.getElementById('acChgDet');
+  if(isAcCharging){
+    acStEl.innerText = '⚡ ŞARJ EDİYOR';
+    acStEl.style.color = '#34d399';
+    const estGridA = Math.max(1, Number(i.chgA||0));
+    acDetEl.innerText = 'Şebekeden Aktif: ~' + estGridA + ' A';
+  } else {
+    acStEl.innerText = 'Şarj Etmiyor';
+    acStEl.style.color = '#94a3b8';
+    acDetEl.innerText = gridPresent ? 'Beklemede (0 A)' : 'Şebeke Kesik (0 A)';
+  }
 
+  // İnverter Isısı Kartı
+  const tInv = Number(i.temp||0), tLvl = Number(i.thermLvl||0);
+  const invBigEl = document.getElementById('invTempBig');
+  const invHintEl = document.getElementById('invThermHint');
+  const thEl = document.getElementById('thermBadge');
+  invBigEl.innerText = tInv + ' °C';
+  if(c.tWarn !== undefined){
+    document.getElementById('invThermLim').innerText = `Sınır: ${c.tWarn} / ${c.tHigh} / ${c.tByp}°C`;
+  }
+  if(tLvl >= 3 || i.thermByp){
+    invBigEl.style.color = '#f87171'; invHintEl.innerText = '🚨 ACİL BYPASS'; invHintEl.style.color = '#f87171';
+    thEl.className = 'pill no'; thEl.innerText = '🚨 ' + tInv + '°C ACİL BYPASS';
+  } else if(tLvl === 2){
+    invBigEl.style.color = '#fb923c'; invHintEl.innerText = '🔥 Kısma (10A)'; invHintEl.style.color = '#fb923c';
+    thEl.className = 'pill no'; thEl.innerText = '🔥 ' + tInv + '°C Kısma-2';
+  } else if(tLvl === 1){
+    invBigEl.style.color = '#fbbf24'; invHintEl.innerText = '⚠️ Kısma (40A)'; invHintEl.style.color = '#fbbf24';
+    thEl.className = 'pill warn'; thEl.innerText = '⚠️ ' + tInv + '°C Kısma-1';
+  } else {
+    invBigEl.style.color = '#34d399'; invHintEl.innerText = '🟢 Normal'; invHintEl.style.color = '#34d399';
+    thEl.className = 'pill ok'; thEl.innerText = '🌡️ ' + tInv + '°C Normal';
+  }
+
+  // BMS / Pil Isısı Kartı
+  const tBms = Number(b.tMax||0);
+  const bmsBigEl = document.getElementById('bmsTempBig');
+  bmsBigEl.innerText = tBms + ' °C';
+  bmsBigEl.style.color = (tBms >= 42 || tBms <= 3) ? '#fbbf24' : '#38bdf8';
   const mosOk = (b.chgMos && b.disMos);
-  document.getElementById('mos').innerText = (b.tMax||0) + '°C • ' + (mosOk ? 'MOS Açık' : ('Ş:'+(b.chgMos?'1':'0')+'/D:'+(b.disMos?'1':'0')));
-
+  document.getElementById('bmsMosHint').innerText = mosOk ? '🟢 MOS Açık' : '⚠️ MOS Kapalı';
+  document.getElementById('bmsMosHint').style.color = mosOk ? '#34d399' : '#fbbf24';
+  document.getElementById('mos').innerText = 'Şarj: ' + (b.chgMos?'Açık':'Kapalı') + ' • Deş: ' + (b.disMos?'Açık':'Kapalı');
   const fEl = document.getElementById('bmsFault');
   fEl.innerText = b.fault || 'Arıza Yok';
   fEl.style.color = (b.fault && b.fault !== 'Arıza Yok') ? '#f87171' : '#34d399';
 
-  const tInv = Number(i.temp||0), tLvl = Number(i.thermLvl||0);
-  const invTempEl = document.getElementById('invTemp');
-  const thEl = document.getElementById('thermBadge');
-  if(tLvl >= 3 || i.thermByp){
-    invTempEl.className = 'pill no'; invTempEl.innerText = '🚨 İnv: ' + tInv + '°C BYPASS';
-    thEl.className = 'pill no';      thEl.innerText = '🚨 ' + tInv + '°C ACİL BYPASS';
-  } else if(tLvl === 2){
-    invTempEl.className = 'pill no'; invTempEl.innerText = '🔥 İnv: ' + tInv + '°C (10A)';
-    thEl.className = 'pill no';      thEl.innerText = '🔥 ' + tInv + '°C Kısma-2';
-  } else if(tLvl === 1){
-    invTempEl.className = 'pill warn'; invTempEl.innerText = '⚠️ İnv: ' + tInv + '°C (40A)';
-    thEl.className = 'pill warn';      thEl.innerText = '⚠️ ' + tInv + '°C Kısma-1';
-  } else {
-    invTempEl.className = 'pill ok'; invTempEl.innerText = '🌡️ İnv: ' + tInv + '°C';
-    thEl.className = 'pill ok';      thEl.innerText = '🌡️ ' + tInv + '°C Normal';
-  }
+  // Hücre Dengesi Kartı
+  const diffMv = Number(b.diff||0);
+  const diffEl = document.getElementById('diffBig');
+  diffEl.innerText = 'Δ ' + diffMv + ' mV';
+  diffEl.style.color = diffMv > 40 ? '#fbbf24' : '#34d399';
+  document.getElementById('minMax').innerText = Number(b.maxV||0).toFixed(3) + ' / ' + Number(b.minV||0).toFixed(3) + ' V';
+  const bMaskNum = Number(b.balMask||0);
+  document.getElementById('balCellSub').innerText = bMaskNum > 0 ? '⚖️ 1A Balans Aktif!' : '1A Balans: Beklemede';
 
   document.getElementById('smartMsg').innerText = i.smart || 'Aktif';
   document.getElementById('lastCmd').innerText  = 'Son: ' + (i.lastCmd || '---');
@@ -721,8 +778,8 @@ function renderData(d){
     const batNames = ['AGM', 'FLD', 'USE (LiFePO4)'];
     const acNames  = ['APL (90-280V)', 'UPS (170-280V)'];
 
-    document.getElementById('prioSub').innerText    = (outShort[s.outPrio]||'-') + ' • ' + (chgShort[s.chgPrio]||'-') + ' • Maks ' + s.maxChgA + 'A';
-    document.getElementById('actVoltAmp').innerText = Number(s.bulkV).toFixed(1) + 'V • ' + s.maxChgA + 'A';
+    document.getElementById('prioSub').innerText    = 'Kaynak: ' + (chgShort[s.chgPrio]||'-') + ' • Limit: ' + s.gridChgA + 'A';
+    document.getElementById('actVoltAmp').innerText = 'Hedef: ' + Number(s.bulkV).toFixed(1) + 'V • ' + s.maxChgA + 'A';
     document.getElementById('roPrio').innerText     = (outNames[s.outPrio]||'-') + ' / ' + (chgNames[s.chgPrio]||'-');
     document.getElementById('roVolts').innerText    = Number(s.bulkV).toFixed(1) + 'V / ' + Number(s.floatV).toFixed(1) + 'V / ' + Number(s.cutOffV).toFixed(1) + 'V';
     document.getElementById('roGridV').innerText    = Number(s.backGridV).toFixed(1) + 'V / ' + Number(s.backBatV).toFixed(1) + 'V';

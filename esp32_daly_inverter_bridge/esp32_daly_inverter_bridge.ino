@@ -124,6 +124,8 @@ struct InverterData {
   float    pvCurrent       = 0.0;   // Solar Panel Akımı (A)
   float    pvVoltage       = 0.0;   // Solar Panel Voltajı (V)
   int      pvPowerWatt     = 0;     // Solar Üretim Gücü (W)
+  bool     sccChgOn        = false; // QPIGS b1: Solar MPPT şarj aktif mi?
+  bool     acChgOn         = false; // QPIGS b0: Şebekeden (AC) şarj aktif mi?
   String   workMode        = "Bilinmiyor"; // SBU / Line / Battery
   String   lastCmdSent     = "Yok";
   uint32_t lastUpdateMs    = 0;
@@ -364,11 +366,14 @@ void pollInverter() {
     invDiagInfo = "BAGLI (RX=GPIO" + String(invRxPin) + ", TX=GPIO" + String(invTxPin) + ")";
     String data = r.substring(1);
     float v[21] = {0};
+    String tok16 = "";
     int idx = 0;
     int start = 0;
     for (int i = 0; i < (int)data.length() && idx < 21; i++) {
       if (data[i] == ' ') {
-        v[idx++] = data.substring(start, i).toFloat();
+        String sub = data.substring(start, i);
+        if (idx == 16) tok16 = sub;
+        v[idx++] = sub.toFloat();
         start = i + 1;
       }
     }
@@ -386,6 +391,13 @@ void pollInverter() {
     inv.pvCurrent      = v[12];
     inv.pvVoltage      = v[13];
     inv.disCurrent     = (int)v[15];
+    if (tok16.length() >= 8) {
+      inv.sccChgOn = (tok16[6] == '1');
+      inv.acChgOn  = (tok16[7] == '1');
+    } else {
+      inv.sccChgOn = (v[19] >= 15);
+      inv.acChgOn  = false;
+    }
     inv.pvPowerWatt    = (int)v[19];
     if (inv.pvPowerWatt == 0 && inv.pvVoltage > 10) {
       inv.pvPowerWatt = (int)(inv.pvVoltage * inv.pvCurrent);
@@ -1172,6 +1184,8 @@ String buildStatusJson() {
   j += "\"pvW\":" + String(inv.pvPowerWatt) + ",";
   j += "\"chgA\":" + String(inv.chgCurrent) + ",";
   j += "\"disA\":" + String(inv.disCurrent) + ",";
+  j += "\"sccChg\":" + String(inv.sccChgOn ? "true" : "false") + ",";
+  j += "\"acChg\":" + String(inv.acChgOn ? "true" : "false") + ",";
   j += "\"temp\":" + String(inv.invTemp) + ",";
   j += "\"thermLvl\":" + String(thermalLevel) + ",";
   j += "\"thermByp\":" + String(thermalBypassActive ? "true" : "false") + ",";
