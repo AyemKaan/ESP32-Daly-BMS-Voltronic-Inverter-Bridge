@@ -458,19 +458,33 @@
         <button id="btnPGR01" onclick="pubCmd('PGR01')">UPS (170-280V)</button>
       </div>
 
-      <div class="sec-lbl" style="margin-top:12px"><span>Manuel Voltaj Ayarları</span></div>
+      <div class="sec-lbl"><span>Prog 08 &amp; 09 — AC Çıkış Voltajı &amp; Frekansı</span><small id="lblOutNom">220V / 50Hz</small></div>
+      <div class="btns">
+        <button id="btnV220" onclick="pubCmd('V220')">220V</button>
+        <button id="btnV230" onclick="pubCmd('V230')">230V</button>
+        <button id="btnV240" onclick="pubCmd('V240')">240V</button>
+        <button id="btnF50"  onclick="pubCmd('F50')">50Hz</button>
+        <button id="btnF60"  onclick="pubCmd('F60')">60Hz</button>
+      </div>
+
+      <div class="sec-lbl" style="margin-top:12px"><span>Voltaj Ayarları (Prog 12, 13, 26, 27, 29)</span></div>
       <div class="row"><span>Prog 26 • Bulk (PCVV)</span><div class="v-edit"><span class="v-cur" id="curBulk">--.-V</span><input type="number" id="inBulk" value="56.8" step="0.1"><button class="sm blu" onclick="sendV('PCVV','inBulk')">Yaz</button></div></div>
       <div class="row"><span>Prog 27 • Float (PBFT)</span><div class="v-edit"><span class="v-cur" id="curFloat">--.-V</span><input type="number" id="inFloat" value="56.0" step="0.1"><button class="sm blu" onclick="sendV('PBFT','inFloat')">Yaz</button></div></div>
       <div class="row"><span>Prog 29 • Kesme (PSDV)</span><div class="v-edit"><span class="v-cur" id="curCut">--.-V</span><input type="number" id="inCut" value="45.0" step="0.1"><button class="sm blu" onclick="sendV('PSDV','inCut')">Yaz</button></div></div>
       <div class="row"><span>Prog 12 • Şebekeye Dönüş (PBCV)</span><div class="v-edit"><span class="v-cur" id="curBGrid">--.-V</span><input type="number" id="inBGrid" value="46.0" step="0.5"><button class="sm blu" onclick="sendV('PBCV','inBGrid')">Yaz</button></div></div>
       <div class="row"><span>Prog 13 • Aküye Dönüş (PBDV)</span><div class="v-edit"><span class="v-cur" id="curBBat">--.-V</span><input type="number" id="inBBat" value="53.0" step="0.5"><button class="sm blu" onclick="sendV('PBDV','inBBat')">Yaz</button></div></div>
 
-      <div class="sec-lbl"><span>Sistem Anahtarları (QFLAG)</span></div>
+      <div class="sec-lbl"><span>Tüm Sistem Anahtarları — 9/9 QFLAG (Açık = Yeşil)</span></div>
       <div class="btns">
-        <button id="btnBuz" onclick="toggleFlag('a', curSet.buz)">🔔 Buzzer</button>
-        <button id="btnByp" onclick="toggleFlag('b', curSet.bypass)">🔄 Bypass</button>
-        <button id="btnPwr" onclick="toggleFlag('j', curSet.pwrsav)">🌙 Tasarruf</button>
-        <button id="btnLcd" onclick="toggleFlag('x', curSet.lcd)">💡 LCD</button>
+        <button id="btnBuz"    onclick="toggleFlag('a', curSet.buz)">🔔 Buzzer (P18)</button>
+        <button id="btnByp"    onclick="toggleFlag('b', curSet.bypass)">🔄 Aşırı Yük Bypass (P23)</button>
+        <button id="btnPwr"    onclick="toggleFlag('j', curSet.pwrsav)">🌙 Tasarruf (P04)</button>
+        <button id="btnLcd"    onclick="toggleFlag('x', curSet.lcd)">💡 LCD Işık (P20)</button>
+        <button id="btnLcdRet" onclick="toggleFlag('k', curSet.lcdret)">↩️ Ana Ekrana Dön (P19)</button>
+        <button id="btnOvlRst" onclick="toggleFlag('v', curSet.ovlrst)">⚡ Aşırı Yük Oto-Başlat (P06)</button>
+        <button id="btnOtpRst" onclick="toggleFlag('u', curSet.otprst)">🌡️ Aşırı Isı Oto-Başlat (P07)</button>
+        <button id="btnSrcAlm" onclick="toggleFlag('y', curSet.srcalm)">🚨 Şebeke Kesinti Sesi (P22)</button>
+        <button id="btnFltRec" onclick="toggleFlag('z', curSet.fltrec)">📝 Arıza Kaydı (P25)</button>
       </div>
 
       <div class="btns" style="margin-top:12px">
@@ -484,13 +498,22 @@
     <div class="card">
       <h3><span>🛡️ Daly BMS Kontrol &amp; Sistem</span><span id="bmsConnBadge" class="pill ok">RS485</span></h3>
 
-      <div class="sec-lbl" style="margin-top:2px"><span>⚡ BMS MOSFET Anahtarları (Dikkatli Kullanın)</span><small id="lblMosState">AÇIK / AÇIK</small></div>
+      <div class="sec-lbl" style="margin-top:2px"><span>⚡ BMS MOSFET Anahtarları (RS485 Doğrudan Kontrol)</span><small id="lblMosState">AÇIK / AÇIK</small></div>
       <div class="btns" style="margin-bottom:10px">
         <button id="btnChgMos" onclick="toggleBmsMos('CHGMOS', curBms.chgMos)">⚡ Şarj MOSFET</button>
         <button id="btnDisMos" onclick="toggleBmsMos('DISMOS', curBms.disMos)">🔌 Deşarj MOSFET</button>
       </div>
 
-      <div class="sec-lbl"><span>⚖️ 1A Aktif Balans Eşiği (RS485)</span><small>Önerilen: 3.40V / 15mV</small></div>
+      <div class="sec-lbl"><span>🎯 BMS % SoC &amp; Saat Kalibrasyonu (RS485 0x21)</span></div>
+      <div class="row">
+        <span>Manuel % Doluluk Kalibre Et</span>
+        <div class="v-edit">
+          <input type="number" id="inBmsSoc" value="70" min="1" max="100" step="0.5" style="width:66px">
+          <button class="sm blu" onclick="saveBmsSoc()">Yaz</button>
+        </div>
+      </div>
+
+      <div class="sec-lbl"><span>⚖️ 1A Aktif Balans Eşiği (RS485 0x1F)</span><small>Önerilen: 3.40V / 15mV</small></div>
       <div class="row">
         <span>Başlama (V) &amp; Fark (mV)</span>
         <div class="v-edit">
@@ -499,6 +522,16 @@
           <button class="sm blu" onclick="saveBmsBal()">Yaz</button>
         </div>
       </div>
+
+      <div class="sec-lbl" style="margin-top:12px"><span>📋 Daly BMS Canlı Okunan Tüm İç Ayarlar (0x50–0x5F)</span></div>
+      <div class="row"><span>Nominal Kapasite / Hücre V</span><strong id="bs2Cap">280.0 Ah / 3.200V</strong></div>
+      <div class="row"><span>Hücre Yüksek Uyarı / Kesme (OVP)</span><strong id="bs2Ovp">3.550V / 3.600V</strong></div>
+      <div class="row"><span>Hücre Düşük Uyarı / Kesme (UVP)</span><strong id="bs2Uvp">2.900V / 2.850V</strong></div>
+      <div class="row"><span>Toplam Paket Kesme (OVP / UVP)</span><strong id="bs2Pack">57.6V / 45.6V</strong></div>
+      <div class="row"><span>Şarj Aşırı Akım Uyarı / Kesme</span><strong id="bs2COcp">160A / 200A</strong></div>
+      <div class="row"><span>Deşarj Aşırı Akım Uyarı / Kesme</span><strong id="bs2DOcp">160A / 200A</strong></div>
+      <div class="row"><span>Şarj / Deşarj Isı Limiti</span><strong id="bs2Temp">0–55°C / 0–55°C</strong></div>
+      <div class="row"><span>1A Balans / Uyku Süresi</span><strong id="bs2Bal">3.200V • 20mV • 60dk</strong></div>
 
       <div class="sec-lbl" style="margin-top:14px"><span>🗑️ İstatistik Bakımı</span></div>
       <div class="btns">
@@ -760,9 +793,19 @@ function renderData(d){
     document.getElementById('bsPack').innerText   = Number(bs.pOvp).toFixed(1) + 'V / ' + Number(bs.pUvp).toFixed(1) + 'V';
     document.getElementById('bsOcp').innerText    = bs.cOcp2 + 'A / ' + bs.dOcp2 + 'A';
     document.getElementById('bsTemp').innerText   = bs.cTLo + '–' + bs.cTHi + '°C • ' + Math.round((bs.sleep||3600)/60) + ' dk';
+
+    document.getElementById('bs2Cap').innerText  = Number(bs.ratedAh).toFixed(1) + ' Ah / ' + Number(bs.nomV).toFixed(3) + 'V';
+    document.getElementById('bs2Ovp').innerText  = Number(bs.ovp1).toFixed(3) + 'V / ' + Number(bs.ovp2).toFixed(3) + 'V';
+    document.getElementById('bs2Uvp').innerText  = Number(bs.uvp1).toFixed(3) + 'V / ' + Number(bs.uvp2).toFixed(3) + 'V';
+    document.getElementById('bs2Pack').innerText = Number(bs.pOvp).toFixed(1) + 'V / ' + Number(bs.pUvp).toFixed(1) + 'V';
+    document.getElementById('bs2COcp').innerText = bs.cOcp1 + 'A / ' + bs.cOcp2 + 'A';
+    document.getElementById('bs2DOcp').innerText = bs.dOcp1 + 'A / ' + bs.dOcp2 + 'A';
+    document.getElementById('bs2Temp').innerText = bs.cTLo + '–' + bs.cTHi + '°C / ' + bs.dTLo + '–' + bs.dTHi + '°C';
+    document.getElementById('bs2Bal').innerText  = Number(bs.balV).toFixed(3) + 'V • ' + bs.balMv + 'mV • ' + Math.round((bs.sleep||3600)/60) + 'dk';
     if(firstBmsSet){
-      document.getElementById('inBalV').value  = Number(bs.balV).toFixed(2);
-      document.getElementById('inBalMv').value = bs.balMv;
+      document.getElementById('inBalV').value   = Number(bs.balV).toFixed(2);
+      document.getElementById('inBalMv').value  = bs.balMv;
+      document.getElementById('inBmsSoc').value = Number(b.soc||70).toFixed(1);
       firstBmsSet = false;
     }
   }
@@ -797,6 +840,12 @@ function renderData(d){
     document.getElementById('lblAcRange').innerText = 'Aktif: ' + (acNames[s.acRange] || s.acRange);
     setActive(['btnPGR00','btnPGR01'], 'btnPGR0' + s.acRange);
 
+    if(s.outNomV){
+      document.getElementById('lblOutNom').innerText = 'Aktif: ' + s.outNomV + 'V / ' + (s.outNomHz||50) + 'Hz';
+      setActive(['btnV220','btnV230','btnV240'], 'btnV' + s.outNomV);
+      setActive(['btnF50','btnF60'], 'btnF' + (s.outNomHz||50));
+    }
+
     document.getElementById('curBulk').innerText  = Number(s.bulkV).toFixed(1) + 'V';
     document.getElementById('curFloat').innerText = Number(s.floatV).toFixed(1) + 'V';
     document.getElementById('curCut').innerText   = Number(s.cutOffV).toFixed(1) + 'V';
@@ -812,10 +861,15 @@ function renderData(d){
       firstSet = false;
     }
 
-    document.getElementById('btnBuz').className = s.buz    ? 'act' : '';
-    document.getElementById('btnByp').className = s.bypass ? 'act' : '';
-    document.getElementById('btnPwr').className = s.pwrsav ? 'act' : '';
-    document.getElementById('btnLcd').className = s.lcd    ? 'act' : '';
+    document.getElementById('btnBuz').className    = s.buz    ? 'act' : '';
+    document.getElementById('btnByp').className    = s.bypass ? 'act' : '';
+    document.getElementById('btnPwr').className    = s.pwrsav ? 'act' : '';
+    document.getElementById('btnLcd').className    = s.lcd    ? 'act' : '';
+    document.getElementById('btnLcdRet').className = s.lcdret ? 'act' : '';
+    document.getElementById('btnOvlRst').className = s.ovlrst ? 'act' : '';
+    document.getElementById('btnOtpRst').className = s.otprst ? 'act' : '';
+    document.getElementById('btnSrcAlm').className = s.srcalm ? 'act' : '';
+    document.getElementById('btnFltRec').className = s.fltrec ? 'act' : '';
   }
 
   // 6) Otomasyon & Aylık Balans Rozetleri
@@ -893,6 +947,12 @@ function toggleBmsMos(which, isOn){
   const next = isOn ? 0 : 1;
   if(!confirm(`DİKKAT: Daly BMS ${label} ${next?'AÇILSIN':'KAPATILSIN'} mı?`)) return;
   pubCmd(`BMS:${which}:${next}`);
+}
+
+function saveBmsSoc(){
+  const pct = Number(document.getElementById('inBmsSoc').value).toFixed(1);
+  if(!confirm(`Daly BMS % SoC değeri %${pct} olarak kalibre edilsin mi?`)) return;
+  pubCmd(`BMS:SOC:${pct}`);
 }
 
 function saveBmsBal(){

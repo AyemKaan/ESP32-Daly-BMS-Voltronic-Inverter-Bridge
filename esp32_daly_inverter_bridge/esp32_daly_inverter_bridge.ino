@@ -134,6 +134,8 @@ struct InverterData {
 struct InverterSettings {
   bool   valid      = false;
   int    ratedW     = 5500;
+  int    outNomV    = 220;   // Prog 08: AC Çıkış Hedef Voltajı (220/230/240V)
+  int    outNomHz   = 50;    // Prog 09: AC Çıkış Hedef Frekansı (50/60Hz)
   int    outPrio    = 2;     // Prog 01: 0=UTI, 1=SOL, 2=SBU
   int    maxChgA    = 80;    // Prog 02: Maks Toplam Şarj Akımı (A)
   int    acRange    = 1;     // Prog 03: 0=APL, 1=UPS
@@ -145,10 +147,15 @@ struct InverterSettings {
   float  bulkV      = 55.2;  // Prog 26: Bulk Voltajı (PCVV)
   float  floatV     = 53.6;  // Prog 27: Float Voltajı (PBFT)
   float  cutOffV    = 45.0;  // Prog 29: Düşük Kesme (PSDV)
-  bool   flagBuz    = true;  // Buzzer (a)
-  bool   flagByPass = true;  // Aşırı Yük Bypass (b)
-  bool   flagPwrSav = false; // Güç Tasarrufu (j)
-  bool   flagLcd    = true;  // Ekran Işığı (x)
+  bool   flagBuz    = true;  // Prog 18: Buzzer (a)
+  bool   flagByPass = true;  // Prog 23: Aşırı Yük Bypass (b)
+  bool   flagPwrSav = false; // Prog 04: Güç Tasarrufu (j)
+  bool   flagLcdRet = false; // Prog 19: Varsayılan Ekrana Dön (k)
+  bool   flagOtpRst = true;  // Prog 07: Aşırı Isı Oto. Yeniden Başlat (u)
+  bool   flagOvlRst = true;  // Prog 06: Aşırı Yük Oto. Yeniden Başlat (v)
+  bool   flagLcd    = true;  // Prog 20: LCD Ekran Işığı (x)
+  bool   flagSrcAlm = false; // Prog 22: Ana Kaynak Kesinti Alarmı (y)
+  bool   flagFltRec = false; // Prog 25: Arıza Kodu Kaydı (z)
   String qflagRaw   = "";
 } invSet;
 
@@ -330,6 +337,8 @@ void pollInverterSettings() {
       }
     }
     invSet.valid     = true;
+    invSet.outNomV   = (int)(p[2] + 0.5f);
+    invSet.outNomHz  = (int)(p[3] + 0.5f);
     invSet.ratedW    = (int)p[6];
     invSet.backGridV = p[8];
     invSet.cutOffV   = p[9];
@@ -353,7 +362,12 @@ void pollInverterSettings() {
       invSet.flagBuz    = (en.indexOf('a') >= 0);
       invSet.flagByPass = (en.indexOf('b') >= 0);
       invSet.flagPwrSav = (en.indexOf('j') >= 0);
+      invSet.flagLcdRet = (en.indexOf('k') >= 0);
+      invSet.flagOtpRst = (en.indexOf('u') >= 0);
+      invSet.flagOvlRst = (en.indexOf('v') >= 0);
       invSet.flagLcd    = (en.indexOf('x') >= 0);
+      invSet.flagSrcAlm = (en.indexOf('y') >= 0);
+      invSet.flagFltRec = (en.indexOf('z') >= 0);
     }
   }
 }
@@ -705,6 +719,28 @@ String handleBmsControlCmd(const String& cmd) {
     d[0] = (cmd.endsWith("1")) ? 1 : 0;
     bool ok = sendDalyWrite(0xD9, d);
     return ok ? "Desarj MOSFET -> OK" : "Desarj MOSFET -> Hata";
+  }
+  if (cmd.startsWith("BMS:SOC:")) {
+    // Format: BMS:SOC:70.0 (Daly 0x21: [YY, MM, DD, HH, mm, ss, socHi, socLo] 0.1% birim)
+    float pct = constrain(cmd.substring(8).toFloat(), 1.0f, 100.0f);
+    uint16_t rawSoc = (uint16_t)(pct * 10.0f + 0.5f);
+    struct tm ti;
+    if (getLocalTime(&ti, 20) && ti.tm_year >= 120) {
+      d[0] = (uint8_t)((ti.tm_year + 1900) - 2000);
+      d[1] = (uint8_t)(ti.tm_mon + 1);
+      d[2] = (uint8_t)ti.tm_mday;
+      d[3] = (uint8_t)ti.tm_hour;
+      d[4] = (uint8_t)ti.tm_min;
+      d[5] = (uint8_t)ti.tm_sec;
+    } else {
+      d[0] = 26; d[1] = 11; d[2] = 26; d[3] = 12; d[4] = 0; d[5] = 0;
+    }
+    d[6] = (uint8_t)(rawSoc >> 8);
+    d[7] = (uint8_t)(rawSoc & 0xFF);
+    bool ok = sendDalyWrite(0x21, d);
+    delay(150);
+    pollDalyBMS();
+    return ok ? ("SoC %" + String(pct, 1) + " Kalibre -> OK") : "SoC Yazma Kilidi (Bluetooth App kullanin)";
   }
   if (cmd.startsWith("BMS:BAL:")) {
     // Format: BMS:BAL:3400:15 (mV, mV fark)
@@ -1199,6 +1235,8 @@ String buildStatusJson() {
   j += "\"set\":{";
   j += "\"ok\":" + String(invSet.valid ? "true" : "false") + ",";
   j += "\"ratedW\":" + String(invSet.ratedW) + ",";
+  j += "\"outNomV\":" + String(invSet.outNomV) + ",";
+  j += "\"outNomHz\":" + String(invSet.outNomHz) + ",";
   j += "\"outPrio\":" + String(invSet.outPrio) + ",";
   j += "\"maxChgA\":" + String(invSet.maxChgA) + ",";
   j += "\"acRange\":" + String(invSet.acRange) + ",";
@@ -1213,7 +1251,12 @@ String buildStatusJson() {
   j += "\"buz\":" + String(invSet.flagBuz ? "true" : "false") + ",";
   j += "\"bypass\":" + String(invSet.flagByPass ? "true" : "false") + ",";
   j += "\"pwrsav\":" + String(invSet.flagPwrSav ? "true" : "false") + ",";
-  j += "\"lcd\":" + String(invSet.flagLcd ? "true" : "false") + "},";
+  j += "\"lcdret\":" + String(invSet.flagLcdRet ? "true" : "false") + ",";
+  j += "\"otprst\":" + String(invSet.flagOtpRst ? "true" : "false") + ",";
+  j += "\"ovlrst\":" + String(invSet.flagOvlRst ? "true" : "false") + ",";
+  j += "\"lcd\":" + String(invSet.flagLcd ? "true" : "false") + ",";
+  j += "\"srcalm\":" + String(invSet.flagSrcAlm ? "true" : "false") + ",";
+  j += "\"fltrec\":" + String(invSet.flagFltRec ? "true" : "false") + "},";
 
   j += "\"cfg\":{";
   j += "\"auto\":" + String(cfg.autoManage ? "true" : "false") + ",";
