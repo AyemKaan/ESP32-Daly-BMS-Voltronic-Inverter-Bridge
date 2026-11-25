@@ -163,7 +163,12 @@ struct InverterSettings {
   bool   flagLcd    = true;  // Prog 20: LCD Ekran Işığı (x)
   bool   flagSrcAlm = false; // Prog 22: Ana Kaynak Kesinti Alarmı (y)
   bool   flagFltRec = false; // Prog 25: Arıza Kodu Kaydı (z)
+  String proto      = "";    // QPI: Protokol Ailesi (örn. PI30)
   String fwVer      = "";    // QVFW: DSP Firmware Sürümü (örn. 96.00)
+  int    outMode    = 0;     // QOPM (Prog 28): 0=Tekil, 1=Paralel, 2=Faz1, 3=Faz2, 4=Faz3
+  String mchgRange  = "";    // QMCHGCR: Desteklenen toplam şarj kademeleri (10..110A)
+  String muchgRange = "";    // QMUCHGCR: Desteklenen şebeke şarj kademeleri (2..80A)
+  String qdiInfo    = "";    // QDI: Fabrika varsayılan referans özeti
   String qflagRaw   = "";
 } invSet;
 
@@ -380,12 +385,59 @@ void pollInverterSettings() {
       invSet.flagFltRec = (en.indexOf('z') >= 0);
     }
   }
+  String qopm = sendInverterCommand("QOPM", 450);
+  if (qopm.startsWith("(") && qopm.length() >= 3) {
+    invSet.outMode = qopm.substring(1).toInt();
+  }
   if (invSet.fwVer.length() == 0) {
+    String qpi = sendInverterCommand("QPI", 450);
+    if (qpi.startsWith("(") && qpi.length() >= 3) invSet.proto = qpi.substring(1);
+
     String qfw = sendInverterCommand("QVFW", 500);
     int col = qfw.indexOf(':');
     if (col > 0) {
       invSet.fwVer = qfw.substring(col + 1);
       while (invSet.fwVer.startsWith("0") && invSet.fwVer.length() > 4) invSet.fwVer.remove(0, 1);
+    }
+
+    auto cleanAmpSteps = [](const String& raw) -> String {
+      if (!raw.startsWith("(")) return "";
+      String s = raw.substring(1), out = "";
+      int pos = 0;
+      while (pos < (int)s.length()) {
+        int sp = s.indexOf(' ', pos);
+        if (sp == -1) sp = s.length();
+        int v = s.substring(pos, sp).toInt();
+        if (v > 0) {
+          if (out.length() > 0) out += " ";
+          out += String(v);
+        }
+        pos = sp + 1;
+      }
+      return out;
+    };
+    String qmc = sendInverterCommand("QMCHGCR", 500);
+    invSet.mchgRange = cleanAmpSteps(qmc);
+    String qmuc = sendInverterCommand("QMUCHGCR", 500);
+    invSet.muchgRange = cleanAmpSteps(qmuc);
+
+    String qdi = sendInverterCommand("QDI", 550);
+    if (qdi.startsWith("(") && qdi.length() > 30) {
+      String ds = qdi.substring(1);
+      float dv[26] = {0};
+      int di = 0, dp = 0;
+      while (di < 26 && dp < (int)ds.length()) {
+        int sp = ds.indexOf(' ', dp);
+        if (sp == -1) sp = ds.length();
+        dv[di++] = ds.substring(dp, sp).toFloat();
+        dp = sp + 1;
+      }
+      if (di >= 23) {
+        char qbuf[80];
+        snprintf(qbuf, sizeof(qbuf), "%dV/%dHz • %.1f/%.1f/%.1fV • %dA/%dA",
+                 (int)dv[0], (int)dv[1], dv[5], dv[22], dv[3], (int)dv[7], (int)dv[2]);
+        invSet.qdiInfo = String(qbuf);
+      }
     }
   }
 }
@@ -1341,6 +1393,11 @@ String buildStatusJson() {
   j += "\"lcd\":" + String(invSet.flagLcd ? "true" : "false") + ",";
   j += "\"srcalm\":" + String(invSet.flagSrcAlm ? "true" : "false") + ",";
   j += "\"fltrec\":" + String(invSet.flagFltRec ? "true" : "false") + ",";
+  j += "\"proto\":\"" + invSet.proto + "\",";
+  j += "\"outMode\":" + String(invSet.outMode) + ",";
+  j += "\"mchg\":\"" + invSet.mchgRange + "\",";
+  j += "\"muchg\":\"" + invSet.muchgRange + "\",";
+  j += "\"qdi\":\"" + invSet.qdiInfo + "\",";
   j += "\"fw\":\"" + invSet.fwVer + "\"},";
 
   j += "\"cfg\":{";

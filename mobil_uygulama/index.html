@@ -256,17 +256,20 @@
       <div class="cells" id="cellsGrid"></div>
     </div>
 
-    <!-- Ayrıntı Paneli 2: İnverter Canlı Parametre & Gizli Q1/QPIWS Özeti -->
+    <!-- Ayrıntı Paneli 2: İnverter Canlı Parametre & Tüm PI30 Protokol Özeti -->
     <div id="dpanel_inv" class="dpanel">
-      <div class="row"><span>Protokol &amp; DSP Firmware</span><strong id="roFw">PI30 • v96.00</strong></div>
+      <div class="row"><span>Protokol &amp; Firmware (QPI / QVFW)</span><strong id="roFw">PI30 • v96.00</strong></div>
+      <div class="row"><span>AC Çıkış Modu (QOPM • Prog 28)</span><strong id="roOutMode">Tekil Çıkış (00)</strong></div>
       <div class="row"><span>İç Isılar (Q1: IGBT / DC-DC / Trafo)</span><strong id="roQ1Temps">-- / -- / -- °C</strong></div>
       <div class="row"><span>Fan Hızı &amp; Şarj Aşaması (Q1)</span><strong id="roQ1Fan">Fan %-- • ---</strong></div>
       <div class="row"><span>İnverter Uyarı / Arıza (QPIWS)</span><strong id="roInvWarn" style="color:#34d399">Uyarı Yok</strong></div>
-      <div class="row"><span>Çıkış / Şarj Önceliği</span><strong id="roPrio">SBU / OSO</strong></div>
+      <div class="row"><span>Çıkış / Şarj Önceliği (QPIRI)</span><strong id="roPrio">SBU / OSO</strong></div>
       <div class="row"><span>Bulk / Float / Kesme Voltajı</span><strong id="roVolts">56.8V / 56.0V / 45.0V</strong></div>
       <div class="row"><span>Şebekeye Geçiş / Aküye Dönüş V</span><strong id="roGridV">46.0V / 53.0V</strong></div>
-      <div class="row"><span>Maks Şarj / Şebeke Şarj Akımı</span><strong id="roAmps">100A / 10A</strong></div>
-      <div class="row"><span>İnverter Şarj / Deşarj Akımı</span><strong id="roInvCur">0A / 0A</strong></div>
+      <div class="row"><span>Aktif Maks / Şebeke Şarj Akımı</span><strong id="roAmps">100A / 10A</strong></div>
+      <div class="row"><span>Desteklenen Kademeler (QMCHGCR/U)</span><strong id="roAmpCaps">10–110A / 2–80A</strong></div>
+      <div class="row"><span>Fabrika Referansı (QDI)</span><strong id="roQdi" style="font-size:11px;color:#94a3b8">230V/50Hz • 56.4/54.0/42.0V • 50A/30A</strong></div>
+      <div class="row"><span>Anlık Şarj / Deşarj Akımı (QPIGS)</span><strong id="roInvCur">0A / 0A</strong></div>
       <div class="btns" style="margin-top:8px">
         <button class="blu" onclick="openSettingsTab('inv')">⚙️ İnverter Ayarlarını Düzenle ▸</button>
       </div>
@@ -426,13 +429,15 @@
         <button id="btnPCP02" onclick="pubCmd('PCP02')">SNU (Güneş+Şebeke)</button>
       </div>
 
-      <div class="sec-lbl"><span>Prog 02 — Maks. Toplam Şarj Akımı</span><small id="lblMaxChg">-- A</small></div>
+      <div class="sec-lbl"><span>Prog 02 — Maks. Toplam Şarj Akımı (QMCHGCR: 10A–110A)</span><small id="lblMaxChg">-- A</small></div>
       <div class="btns">
         <button id="btnM10" onclick="pubCmd('MCHGC010')">10A</button>
         <button id="btnM20" onclick="pubCmd('MCHGC020')">20A</button>
         <button id="btnM30" onclick="pubCmd('MCHGC030')">30A</button>
         <button id="btnM40" onclick="pubCmd('MCHGC040')">40A</button>
+        <button id="btnM50" onclick="pubCmd('MCHGC050')">50A</button>
         <button id="btnM60" onclick="pubCmd('MCHGC060')">60A</button>
+        <button id="btnM70" onclick="pubCmd('MCHGC070')">70A</button>
         <button id="btnM80" onclick="pubCmd('MCHGC080')">80A</button>
         <button id="btnM90" onclick="pubCmd('MCHGC090')">90A</button>
         <button id="btnM100" onclick="pubCmd('MCHGC100')">100A</button>
@@ -493,6 +498,10 @@
         <button id="btnSrcAlm" onclick="toggleFlag('y', curSet.srcalm)">🚨 Şebeke Kesinti Sesi (P22)</button>
         <button id="btnFltRec" onclick="toggleFlag('z', curSet.fltrec)">📝 Arıza Kaydı (P25)</button>
       </div>
+
+      <div class="sec-lbl"><span>Cihaz Protokol &amp; Fabrika Bilgisi (QPI • QVFW • QOPM • QDI)</span></div>
+      <div class="row"><span>Prog 28 • AC Çıkış Modu (QOPM)</span><strong id="setOutMode">Tekil Çıkış (00)</strong></div>
+      <div class="row"><span>Fabrika Varsayılanları (QDI)</span><strong id="setQdiInfo" style="font-size:11px;color:#94a3b8">230V/50Hz • 56.4/54.0/42.0V • 50A/30A</strong></div>
 
       <div class="btns" style="margin-top:12px">
         <button class="pur" onclick="applyLiFePO4()">⚡ Tek Tuşla 16S LiFePO4 Boost Profilini Yaz</button>
@@ -851,14 +860,32 @@ function renderData(d){
     document.getElementById('roGridV').innerText    = Number(s.backGridV).toFixed(1) + 'V / ' + Number(s.backBatV).toFixed(1) + 'V';
     document.getElementById('roAmps').innerText     = s.maxChgA + ' A / ' + s.gridChgA + ' A';
 
-    document.getElementById('invRatedBadge').innerText = (s.ratedW||5500) + 'W • ' + (s.fw ? ('FW ' + s.fw) : '48V');
-    if(s.fw) document.getElementById('roFw').innerText = 'PI30 • DSP v' + s.fw;
+    const protoStr = s.proto || 'PI30';
+    document.getElementById('invRatedBadge').innerText = (s.ratedW||5500) + 'W • ' + protoStr + (s.fw ? (' v' + s.fw) : '');
+    if(s.fw || s.proto) document.getElementById('roFw').innerText = protoStr + ' • DSP v' + (s.fw || '96.00');
+    const opmMap = {0:'Tekil Çıkış (00 - Single)', 1:'Paralel (01)', 2:'3-Faz P1 (02)', 3:'3-Faz P2 (03)', 4:'3-Faz P3 (04)'};
+    if(s.outMode !== undefined){
+      const opmTxt = opmMap[s.outMode] || ('Mod ' + s.outMode);
+      document.getElementById('roOutMode').innerText  = opmTxt;
+      document.getElementById('setOutMode').innerText = opmTxt;
+    }
+    if(s.mchg || s.muchg){
+      const mc = s.mchg ? s.mchg.split(' ') : [];
+      const mu = s.muchg ? s.muchg.split(' ') : [];
+      document.getElementById('roAmpCaps').innerText =
+        (mc.length ? `${mc[0]}–${mc[mc.length-1]}A (${mc.length} kad.)` : '10–110A') + ' • ' +
+        (mu.length ? `${mu[0]}–${mu[mu.length-1]}A (${mu.length} kad.)` : '2–80A');
+    }
+    if(s.qdi){
+      document.getElementById('roQdi').innerText      = s.qdi;
+      document.getElementById('setQdiInfo').innerText = s.qdi;
+    }
     document.getElementById('lblOutPrio').innerText = 'Aktif: ' + (outNames[s.outPrio] || s.outPrio);
     setActive(['btnPOP00','btnPOP01','btnPOP02'], 'btnPOP0' + s.outPrio);
     document.getElementById('lblChgPrio').innerText = 'Aktif: ' + (chgNames[s.chgPrio] || s.chgPrio);
     setActive(['btnPCP01','btnPCP02','btnPCP03'], 'btnPCP0' + s.chgPrio);
     document.getElementById('lblMaxChg').innerText = 'Aktif: ' + s.maxChgA + ' A';
-    setActive(['btnM10','btnM20','btnM30','btnM40','btnM60','btnM80','btnM90','btnM100','btnM110'], 'btnM' + s.maxChgA);
+    setActive(['btnM10','btnM20','btnM30','btnM40','btnM50','btnM60','btnM70','btnM80','btnM90','btnM100','btnM110'], 'btnM' + s.maxChgA);
     document.getElementById('lblGridChg').innerText = 'Aktif: ' + s.gridChgA + ' A';
     setActive(['btnU2','btnU10','btnU20','btnU30','btnU40','btnU50','btnU60','btnU70','btnU80'], 'btnU' + s.gridChgA);
     document.getElementById('lblBatType').innerText = 'Aktif: ' + (batNames[s.battType] || s.battType);
