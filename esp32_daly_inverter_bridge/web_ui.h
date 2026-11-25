@@ -311,6 +311,13 @@ const char INDEX_HTML[] PROGMEM = R"HTMLEND(
   <div class="row"><span>🔥 İnv. Kademe-2 Kısma → 10A (°C)</span><input type="number" id="cTHigh" value="72" min="50" max="84" step="1"></div>
   <div class="row"><span>🚨 İnv. Acil Şebeke Bypass (°C)</span><input type="number" id="cTByp" value="78" min="55" max="90" step="1"></div>
 
+  <div class="sec-lbl" style="margin-top:12px"><span>📅 Aylık Otomatik %100 Balans &amp; Kalibrasyon</span><span id="mBalBadge" class="pill info">Ayın 1'i</span></div>
+  <div class="row"><span>Ayda 1 Oto %100 Balans Günü</span><input class="switch" type="checkbox" id="cMBal" checked></div>
+  <div class="row"><span>Balans Günü (Her Ayın Kaçı, 1–28)</span><input type="number" id="cBalDay" value="1" min="1" max="28" step="1"></div>
+  <div class="btns" style="margin-top:6px">
+    <button id="btnMBalToggle" onclick="toggleMonthlyBal()">🔄 Bu Ay %100 Balansı Şimdi Başlat</button>
+  </div>
+
   <div class="btns" style="margin-top:12px">
     <button class="act" onclick="saveCfg()">💾 Boost &amp; Termal Kuralları ESP32'ye Kaydet</button>
   </div>
@@ -594,15 +601,43 @@ function renderData(d){
   // Üst Şarj Sınırı Canlı Rozeti ve Butonları
   if(c.maxSoc !== undefined){
     const ms = Math.round(Number(c.maxSoc));
-    document.getElementById('lblMaxSoc').innerText = (ms >= 100) ? 'Sınırsız (%100)' : ('Maks %' + ms);
-    setActive(['btnCap80','btnCap90','btnCap92','btnCap95','btnCap100'], 'btnCap' + ms);
+    document.getElementById('lblMaxSoc').innerText = c.mBalAct ? '📅 AYLIK %100 BALANS AKTİF' : ((ms >= 100) ? 'Sınırsız (%100)' : ('Maks %' + ms));
+    setActive(['btnCap80','btnCap90','btnCap92','btnCap95','btnCap100'], 'btnCap' + (c.mBalAct ? 100 : ms));
     const cb = document.getElementById('capBadge');
-    if(c.socCap){
+    if(c.mBalAct){
+      cb.className = 'pill info';
+      cb.innerText = '📅 AYLIK %100 BALANS';
+    } else if(c.socCap){
       cb.className = 'pill warn';
       cb.innerText = '🛑 SINIR DEVREDE (%' + ms + ' / 0A)';
     } else {
       cb.className = 'pill ok';
       cb.innerText = (ms >= 100) ? 'Tam Dolum (%100)' : ('Üst Sınır: %' + ms);
+    }
+  }
+
+  // Aylık Otomatik %100 Balans Rozeti
+  if(c.mBal !== undefined){
+    window.curMBalAct = !!c.mBalAct;
+    const mb = document.getElementById('mBalBadge');
+    const btn = document.getElementById('btnMBalToggle');
+    if(c.mBalAct){
+      mb.className = 'pill warn';
+      mb.innerText = '⚡ ŞU AN %100 BALANSTA';
+      btn.className = 'act';
+      btn.innerText = '⏹️ Aktif %100 Balansı İptal Et (%90\'a Dön)';
+    } else if(!c.mBal){
+      mb.className = 'pill no';
+      mb.innerText = 'Kapalı';
+      btn.className = '';
+      btn.innerText = '🔄 Bu Ay %100 Balansı Şimdi Başlat';
+    } else {
+      mb.className = 'pill ok';
+      const lm = Number(c.lastBalM||0);
+      const lmStr = lm > 200000 ? ('Son: ' + String(lm).slice(4) + '/' + String(lm).slice(0,4) + ' • ') : '';
+      mb.innerText = lmStr + 'Ayın ' + (c.balDay||1) + '\'i';
+      btn.className = '';
+      btn.innerText = '🔄 Bu Ay %100 Balansı Şimdi Başlat';
     }
   }
 
@@ -624,6 +659,8 @@ function renderData(d){
     if(c.tWarn !== undefined) document.getElementById('cTWarn').value = c.tWarn;
     if(c.tHigh !== undefined) document.getElementById('cTHigh').value = c.tHigh;
     if(c.tByp  !== undefined) document.getElementById('cTByp').value  = c.tByp;
+    if(c.mBal  !== undefined) document.getElementById('cMBal').checked = !!c.mBal;
+    if(c.balDay !== undefined) document.getElementById('cBalDay').value = c.balDay;
     firstCfg = false;
   }
 }
@@ -679,8 +716,18 @@ function setMaxSoc(val){
   saveCfg();
 }
 
+function toggleMonthlyBal(){
+  if(window.curMBalAct){
+    if(!confirm('Aktif aylık %100 balans günü iptal edilip normal %90 sınırına dönülsün mü?')) return;
+    pubCmd('CANCEL_MONTHLY_BAL');
+  } else {
+    if(!confirm('Şimdi %100 tepe balans ve SoC kalibrasyon günü başlatılsın mı? Tamamlanınca otomatik %90\'a döner.')) return;
+    pubCmd('START_MONTHLY_BAL');
+  }
+}
+
 async function saveCfg(){
-  const qs = `auto=${document.getElementById('cAuto').checked?1:0}&maxS=${document.getElementById('cMaxS').value}&bulkV=${document.getElementById('cBulkV').value}&floatV=${document.getElementById('cFloatV').value}&socG=${document.getElementById('cSocG').value}&socB=${document.getElementById('cSocB').value}&chgOn=${document.getElementById('cChgOn').value}&chgOff=${document.getElementById('cChgOff').value}&maxA=${document.getElementById('cMaxA').value}&midA=${document.getElementById('cMidA').value}&balA=${document.getElementById('cBalA').value}&tap1=${document.getElementById('cTap1').value}&tap2=${document.getElementById('cTap2').value}&tWarn=${document.getElementById('cTWarn').value}&tHigh=${document.getElementById('cTHigh').value}&tByp=${document.getElementById('cTByp').value}`;
+  const qs = `auto=${document.getElementById('cAuto').checked?1:0}&maxS=${document.getElementById('cMaxS').value}&bulkV=${document.getElementById('cBulkV').value}&floatV=${document.getElementById('cFloatV').value}&socG=${document.getElementById('cSocG').value}&socB=${document.getElementById('cSocB').value}&chgOn=${document.getElementById('cChgOn').value}&chgOff=${document.getElementById('cChgOff').value}&maxA=${document.getElementById('cMaxA').value}&midA=${document.getElementById('cMidA').value}&balA=${document.getElementById('cBalA').value}&tap1=${document.getElementById('cTap1').value}&tap2=${document.getElementById('cTap2').value}&tWarn=${document.getElementById('cTWarn').value}&tHigh=${document.getElementById('cTHigh').value}&tByp=${document.getElementById('cTByp').value}&mBal=${document.getElementById('cMBal').checked?1:0}&balDay=${document.getElementById('cBalDay').value}`;
   if(IS_LOCAL_ESP){
     await fetch('/api/cfg?' + qs);
     toast('Otomasyon ve termal kurallar kaydedildi!');

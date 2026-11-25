@@ -25,7 +25,8 @@ A **100% wired industrial ESP32 Dual-Core (FreeRTOS)** automation bridge that co
   - **Stage 1 — Fast Boost (`< 90%` & `maxCell < 3.45V`):** Drives inverter at **`56.8V Bulk / 56.0V Float` + `100A`** (`~0.35C`) — completely eliminates DC cable voltage-drop throttling and the notorious Voltronic PI30 *"Premature Float Bug"* so solar panels deliver 100% full speed!
   - **Stage 2 — Automatic Voltage & Current Step-Down (`maxCell ≥ 3.45V`):** Automatically drops inverter targets to **`55.2V / 54.0V`** and **`40A`** (`≥ 3.49V` → **`10A`**) so the Daly 1A active balancer top-balances cells smoothly without ever hitting BMS OVP (`3.60V`).
   - **Stage 3 — Hard Cut-Off (`SoC ≥ 90%` or `maxCell ≥ 3.51V`):** Immediately drops Bulk/Float to **`52.8V` + `10A` (`0A` battery current)** so solar continues feeding household loads while the battery rests; automatically resumes Boost at `maxSoc - 3%` (`87%`).
-  - **True SoC & Lowest-Cell Switching:** Switches between **SBU (Battery + Solar)** and **UTI (Utility Grid)** based on real BMS `% SoC` (`20% → 30%`) and minimum cell voltage (`≤ 3.00V`), plus winter emergency grid top-up (`12% → 20%`).
+  - **Monthly Automatic `100%` Top-Balance & SoC Calibration Day:** Once per month (default: 1st of the month, automatically retries on the first sunny day if cloudy), temporarily lifts the daily `90%` cap to `100%`, steps smoothly down to `55.2V/10A` for Daly 1A active balancing, and automatically reverts back to `90%` once balanced (also manually triggerable/cancellable with one tap).
+  - **True SoC & Lowest-Cell Switching:** Switches to Utility Grid (`POP00`) + Grid Charge (`PCP02`) at **`≤ 20%`** (or cell `≤ 3.00V`), stops grid charge at **`25%`** (`PCP03` — avoids wasteful nighttime grid cycling), and returns to Battery+Solar (`POP02` SBU) once morning solar reaches **`≥ 30%`**.
 - **🌡️ 3-Stage Inverter Over-Temperature Throttling & Emergency Grid Bypass (Voltronic PI30 Heatsink Tuned):**
   - `≥ 65 °C` → Immediately throttles charge current to **`40A`** (recovers at `≤ 60 °C`).
   - `≥ 72 °C` → Immediately throttles charge current to **`10A`** (recovers at `≤ 66 °C`).
@@ -33,7 +34,7 @@ A **100% wired industrial ESP32 Dual-Core (FreeRTOS)** automation bridge that co
   - Runs at **highest priority** — bypasses the 45s EEPROM cooldown and operates even if the BMS is momentarily offline.
 - **📊 Live 16-Cell Matrix & Full Daly BMS Telemetry:** Individual millivolt bars, live `⚖️` 1A active balance cell indicators (`0x97`), total cycle count (`0x94`), live fault flags (`0x98`), internal OVP/UVP/OCP/temperature thresholds (`0x50–0x5F`), and Charge/Discharge MOSFET status.
 - **⚙️ Full Live WatchPower Inverter Menu (17 Settings):** Control Output Priority (`POP`), Charge Priority (`PCP`), Max Charge Current (`10A–110A`), Utility Charge Current (`MUCHGC`), Battery Type (`PBT`), AC Input Range (`PGR`), Bulk/Float/Cut-Off/Back-to-Grid/Back-to-Battery voltages, and `QFLAG` switches (Buzzer, Bypass, Power Saving, LCD Backlight).
-- **📈 30-Day & 24-Hour Energy Analytics:** NTP-synced real-time Watt-to-kWh integration stored in ESP32 NVS Flash, rendered as interactive HTML5 Canvas bar charts (PV Production, Home Load, Battery Charge/Discharge, Grid Bypass, Grid Charge).
+- **📈 30-Day & 24-Hour Energy Analytics:** NTP-synced real-time Watt-to-kWh integration (with night `PV < 15 W` / `< 40 V` ADC zero-drift filtering) stored in ESP32 NVS Flash, rendered as interactive HTML5 Canvas bar charts (PV Production, Home Load, Battery Charge/Discharge, Grid Bypass, Grid Charge).
 - **📡 Local Wi-Fi + Global MQTT + Wi-Fi OTA + Android APK:** Zero-latency LAN access (`http://192.168.1.140`), global remote access via `MQTT over WSS`, wireless firmware flashing (`/update`), and native Android WebView APK source.
 
 ---
@@ -190,8 +191,8 @@ When the server replies **`OK`**, the ESP32 automatically reboots into the new f
 | **Stage 2 — Soften / Balance Voltages** | **`55.2 V / 54.0 V`** | Automatically stepped down as soon as any cell reaches `≥ 3.45V` (`40A`, then `10A` at `≥ 3.49V`) |
 | **Stage 3 — Hard Cap Cut-Off** | **`52.8 V / 52.8 V (0A)`** | Triggered at **`90% SoC`** or **`maxCell ≥ 3.51V`**; solar feeds home loads while battery rests (`87%` resume) |
 | **Low DC Cut-Off (`PSDV`)** | **`45.0 V`** (`2.812 V/cell`) | Hardware safety floor |
-| **Grid / Battery Switching** | **`20%` → `30%`** | Also switches to Grid (`POP00`) if any cell drops `≤ 3.00 V` |
-| **Emergency Winter Grid Support** | **`12%` → `20%`** | Enables `10A` utility support (`PCP02`) below `12%`, returns to Solar-Only (`PCP03`) at `20%` |
+| **Grid Switch + Grid Charge** | **`≤ 20%` → `25%` → `30%`** | At `≤ 20%` (or cell `≤ 3.00 V`): switches to Grid (`POP00`) + Grid Charge (`PCP02`); stops grid charge at `25%` (`PCP03`); returns to SBU (`POP02`) at `≥ 30%` |
+| **Monthly Auto Top-Balance** | **1st of Every Month (`100%`)** | Temporarily raises cap to `100%` once per month for cell balancing & BMS SoC calibration, then automatically returns to `90%` |
 | **Fast Charge Current (`280Ah`)** | **`100A → 40A → 10A`** | `100A` (`~0.35C`) full-speed solar harvest; steps down at `3.45V` / `3.49V` / `3.55V` |
 | **Daly 1A Active Balance (Recommended)** | **`3.40 V / 15 mV`** | Top-balancing above the flat LiFePO4 voltage plateau (configure via Smart BMS app) |
 

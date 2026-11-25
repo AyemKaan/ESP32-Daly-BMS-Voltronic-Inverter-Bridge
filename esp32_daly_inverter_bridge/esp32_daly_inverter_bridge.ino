@@ -170,6 +170,9 @@ struct SmartConfig {
   int      invTempWarn     = 65;    // İnverter Termal Kademe-1 (°C): Şarjı 40A'e kıs (PI30 araştırma onaylı)
   int      invTempHigh     = 72;    // İnverter Termal Kademe-2 (°C): Şarjı 10A'e kıs
   int      invTempBypass   = 78;    // İnverter Termal Kademe-3 (°C): ACİL ŞEBEKE BYPASS (POP00 + 10A)
+  bool     autoMonthlyBal  = true;  // Ayda 1 otomatik %100 balans & SoC kalibrasyon günü aktif mi?
+  int      balDayOfMonth   = 1;     // Her ayın kaçıncı gününde %100 balans başlatılsın (1-28)
+  int      lastBalMonth    = 0;     // Son tamamlanan balans ayı (YYYYMM, örn: 202611)
 } cfg;
 
 // Durum takip değişkenleri (EEPROM Koruması için)
@@ -178,6 +181,8 @@ String   currentTargetOutputPop = "";
 String   currentTargetChgPcp    = "";
 bool     baseLiFePO4Synced      = false;
 bool     socCapActive           = false; // Üst % SoC şarj sınırı şu an devrede mi?
+bool     monthlyBalActive       = false; // Aylık otomatik %100 balans günü şu an devrede mi?
+uint32_t balHoldStartMs         = 0;     // Aylık tepe balans bekleme sayacı
 int      chargeVoltStage        = -1;    // 0=BOOST(56.8/56.0V), 1=YUMUSAT(55.2/54.0V), 2=DURDUR(52.8V/0A)
 int      thermalLevel           = 0;     // 0=Normal, 1=Kısma1(40A), 2=Kısma2(10A), 3=ACİL BYPASS(POP00)
 bool     thermalBypassActive    = false; // İnverter aşırı ısınma acil şebeke bypass aktif mi?
@@ -384,6 +389,10 @@ void pollInverter() {
     inv.pvPowerWatt    = (int)v[19];
     if (inv.pvPowerWatt == 0 && inv.pvVoltage > 10) {
       inv.pvPowerWatt = (int)(inv.pvVoltage * inv.pvCurrent);
+    }
+    // Gece ADC gürültüsü temizliği (PV < 15W veya PV voltajı < 40V iken 0W say)
+    if (inv.pvPowerWatt < 15 || inv.pvVoltage < 40.0f) {
+      inv.pvPowerWatt = 0;
     }
     inv.lastUpdateMs   = millis();
 
@@ -910,17 +919,60 @@ void runSmartBmsControl() {
     return;
   }
 
+  // --- AYLIK OTOMATİK %100 BALANS & KALİBRASYON GÜNÜ KONTROLÜ ---
+  struct tm tiBal;
+  if (cfg.autoMonthlyBal && getLocalTime(&tiBal, 10) && tiBal.tm_year >= 120) {
+    int ym = (tiBal.tm_year + 1900) * 100 + (tiBal.tm_mon + 1);
+    // İlk kurulumda hedef gün bu ay zaten geçtiyse (örn. 25 Kasım > 1), bir sonraki ayın 1'ini bekle
+    if (cfg.lastBalMonth == 0 && tiBal.tm_mday > cfg.balDayOfMonth) {
+      cfg.lastBalMonth = ym;
+      prefs.putInt("lastBalM", ym);
+    }
+    if (tiBal.tm_mday >= cfg.balDayOfMonth && cfg.lastBalMonth != ym) {
+      if (!monthlyBalActive) {
+        monthlyBalActive = true;
+        balHoldStartMs = 0;
+        forceSmartCheck = true;
+      }
+      // Tepe balans tamamlanma kriteri: >=%99 veya >=3.45V'da 20dk (veya >=%99.8 & delta<=15mV'da 5dk)
+      if (bms.soc >= 99.0f || bms.maxCellV >= 3.45f) {
+        if (balHoldStartMs == 0) balHoldStartMs = millis();
+        uint32_t heldMs = millis() - balHoldStartMs;
+        bool fastDone = (bms.soc >= 99.8f && bms.cellDiffMv <= 15.0f && heldMs >= 5UL * 60UL * 1000UL);
+        bool fullDone = (heldMs >= 20UL * 60UL * 1000UL);
+        if (fastDone || fullDone) {
+          cfg.lastBalMonth = ym;
+          prefs.putInt("lastBalM", ym);
+          monthlyBalActive = false;
+          balHoldStartMs = 0;
+          forceSmartCheck = true;
+          inv.lastCmdSent = "[Aylik Balans Bitti " + String(ym) + "] Normal %" + String(cfg.maxSocLimit, 0) + " moda donuldu";
+        }
+      } else if (bms.soc < 95.0f && bms.maxCellV < 3.40f) {
+        balHoldStartMs = 0;
+      }
+    } else {
+      monthlyBalActive = false;
+      balHoldStartMs = 0;
+    }
+  } else if (!cfg.autoMonthlyBal) {
+    monthlyBalActive = false;
+    balHoldStartMs = 0;
+  }
+
+  float effMaxSoc = monthlyBalActive ? 100.0f : cfg.maxSocLimit;
+
   // EEPROM koruması: İki otomatik komut arasında en az 45 saniye bekle (termal yükseliş veya yeni ayarda bekleme!)
   if (!thermalEscalated && !forceSmartCheck && (millis() - lastInverterCmdMs < 45000)) return;
   forceSmartCheck = false;
 
   // --- KATMAN 0: %90 ÜST SINIR VEYA HÜCRE >= 3.51V EMNİYET KESMESİ (AŞAMA 3: 52.8V / 0A DURDUR!) ---
-  bool hitSocCap  = (cfg.maxSocLimit < 99.5f && bms.soc >= cfg.maxSocLimit);
-  bool hitCellCap = (cfg.maxSocLimit < 99.5f && bms.maxCellV >= 3.51f);
+  bool hitSocCap  = (effMaxSoc < 99.5f && bms.soc >= effMaxSoc);
+  bool hitCellCap = (effMaxSoc < 99.5f && bms.maxCellV >= 3.51f);
   if (hitSocCap || hitCellCap) {
     smartStatusMsg = hitCellCap
       ? ("UST SINIR EMNIYET (Hucre " + String(bms.maxCellV, 3) + "V -> 52.8V/0A)")
-      : ("UST SINIR AKTIF (%" + String(cfg.maxSocLimit, 0) + " Doldu -> 52.8V / 0A Durduruldu)");
+      : ("UST SINIR AKTIF (%" + String(effMaxSoc, 0) + " Doldu -> 52.8V / 0A Durduruldu)");
     bool alreadyAtCap = invSet.valid && fabs(invSet.bulkV - 52.8f) <= 0.15f && fabs(invSet.floatV - 52.8f) <= 0.15f && invSet.maxChgA <= 10;
     if (!socCapActive || !alreadyAtCap) {
       if (!alreadyAtCap) {
@@ -928,7 +980,7 @@ void runSmartBmsControl() {
         delay(250);
         String ra = setInverterChargeAmp(10);
         pollInverterSettings();
-        inv.lastCmdSent = "[Ust Sinir %" + String(cfg.maxSocLimit, 0) + "] 52.8V/0A -> " + rv + " " + ra;
+        inv.lastCmdSent = "[Ust Sinir %" + String(effMaxSoc, 0) + "] 52.8V/0A -> " + rv + " " + ra;
         lastInverterCmdMs = millis();
       }
       socCapActive = true;
@@ -936,15 +988,16 @@ void runSmartBmsControl() {
       currentTargetChargeAmp = 10;
       return;
     }
-  } else if (socCapActive && (cfg.maxSocLimit >= 99.5f || (bms.soc <= (cfg.maxSocLimit - 3.0f) && bms.maxCellV < 3.42f))) {
-    // Sınırın %3 altına inince veya sınır %100 yapılınca Boost şarj voltajlarını geri aç!
+  } else if (socCapActive && (effMaxSoc >= 99.5f || (bms.soc <= (effMaxSoc - 3.0f) && bms.maxCellV < 3.42f))) {
+    // Sınırın %3 altına inince veya aylık %100 balans günü başlayınca Boost şarj voltajlarını geri aç!
     float tBulk  = (bms.maxCellV >= cfg.cellTaper1V) ? 55.2f : cfg.bulkVoltage;
     float tFloat = (bms.maxCellV >= cfg.cellTaper1V) ? 54.0f : cfg.floatVoltage;
     String rv = setInverterVoltages(tBulk, tFloat);
     socCapActive = false;
     chargeVoltStage = (bms.maxCellV >= cfg.cellTaper1V) ? 1 : 0;
     pollInverterSettings();
-    inv.lastCmdSent = "[Sinir Acildi] Boost " + String(tBulk, 1) + "V/" + String(tFloat, 1) + "V -> " + rv;
+    inv.lastCmdSent = String(monthlyBalActive ? "[Aylik %100 Balans] " : "[Sinir Acildi] ") +
+                      String(tBulk, 1) + "V/" + String(tFloat, 1) + "V -> " + rv;
     forceSmartCheck = true; // Bir sonraki döngüde tam akımı (100A) hemen geri yükselt
     lastInverterCmdMs = millis();
     return;
@@ -968,11 +1021,11 @@ void runSmartBmsControl() {
     desiredVoltStage = 1;
     desiredAmp = cfg.balChargeAmp;
     reason = "Acil Tepe Freni (Hucre >= " + String(cfg.cellEmergV, 2) + "V -> 55.2V/" + String(cfg.balChargeAmp) + "A)";
-  } else if (bms.maxCellV >= cfg.cellTaper2V || (cfg.maxSocLimit >= 99.5f && bms.soc >= 96.0f) || (bms.cellDiffMv >= 45.0f && bms.maxCellV >= 3.40f)) {
+  } else if (bms.maxCellV >= cfg.cellTaper2V || (effMaxSoc >= 99.5f && bms.soc >= 96.0f) || (bms.cellDiffMv >= 45.0f && bms.maxCellV >= 3.40f)) {
     desiredVoltStage = 1;
     desiredAmp = cfg.balChargeAmp;
     reason = "1A Balans Modu (" + String(cfg.cellTaper2V, 2) + "V -> 55.2V/" + String(cfg.balChargeAmp) + "A)";
-  } else if (bms.maxCellV >= cfg.cellTaper1V || (cfg.maxSocLimit >= 99.5f && bms.soc >= 93.0f)) {
+  } else if (bms.maxCellV >= cfg.cellTaper1V || (effMaxSoc >= 99.5f && bms.soc >= 93.0f)) {
     desiredVoltStage = 1;
     desiredAmp = cfg.midChargeAmp;
     reason = "Yumusatma Modu (Hucre >= " + String(cfg.cellTaper1V, 2) + "V -> 55.2V/" + String(cfg.midChargeAmp) + "A)";
@@ -983,6 +1036,7 @@ void runSmartBmsControl() {
   } else if (currentTargetChargeAmp > 0) {
     desiredAmp = currentTargetChargeAmp; // Histerezis bölgesi - gereksiz değiştirme
   }
+  if (monthlyBalActive) reason = "[AYLIK %100 BALANS] " + reason;
 
   // Dinamik Voltaj Geçişi (BOOST 56.8/56.0V <-> YUMUŞATMA 55.2/54.0V)
   float targetBulkV  = (desiredVoltStage == 0) ? cfg.bulkVoltage  : 55.2f;
@@ -1164,7 +1218,11 @@ String buildStatusJson() {
   j += "\"floatV\":" + String(cfg.floatVoltage, 1) + ",";
   j += "\"tWarn\":" + String(cfg.invTempWarn) + ",";
   j += "\"tHigh\":" + String(cfg.invTempHigh) + ",";
-  j += "\"tByp\":" + String(cfg.invTempBypass) + "},";
+  j += "\"tByp\":" + String(cfg.invTempBypass) + ",";
+  j += "\"mBal\":" + String(cfg.autoMonthlyBal ? "true" : "false") + ",";
+  j += "\"balDay\":" + String(cfg.balDayOfMonth) + ",";
+  j += "\"lastBalM\":" + String(cfg.lastBalMonth) + ",";
+  j += "\"mBalAct\":" + String(monthlyBalActive ? "true" : "false") + "},";
   j += "\"mqtt\":" + String(mqttClient.connected() ? "true" : "false") + ",";
   j += "\"up\":" + String(millis() / 1000);
   j += "}";
@@ -1194,6 +1252,25 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   if (t == MQTT_T_CMD) {
     if (msg == "APPLY_LIFEPO4") {
       applyFullLiFePO4Setup(true);
+    } else if (msg == "START_MONTHLY_BAL") {
+      cfg.autoMonthlyBal = true;
+      cfg.lastBalMonth = 0;
+      monthlyBalActive = true;
+      balHoldStartMs = 0;
+      prefs.putBool("mBal", true);
+      prefs.putInt("lastBalM", 0);
+      forceSmartCheck = true;
+      inv.lastCmdSent = "[APK] Aylik %100 Balans Gunu BASLATILDI";
+    } else if (msg == "CANCEL_MONTHLY_BAL") {
+      struct tm tNow;
+      int ym = 202611;
+      if (getLocalTime(&tNow, 20) && tNow.tm_year >= 120) ym = (tNow.tm_year + 1900) * 100 + (tNow.tm_mon + 1);
+      cfg.lastBalMonth = ym;
+      monthlyBalActive = false;
+      balHoldStartMs = 0;
+      prefs.putInt("lastBalM", ym);
+      forceSmartCheck = true;
+      inv.lastCmdSent = "[APK] Aylik %100 Balans IPTAL -> Normal %" + String(cfg.maxSocLimit, 0);
     } else if (msg == "RESET_STATS") {
       resetEnergyStore();
       cachedStatsJson = buildStatsJson();
@@ -1239,6 +1316,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     if ((v = getParamVal(msg, "tWarn")).length())  cfg.invTempWarn   = constrain(v.toInt(), 45, 78);
     if ((v = getParamVal(msg, "tHigh")).length())  cfg.invTempHigh   = constrain(v.toInt(), cfg.invTempWarn + 2, 84);
     if ((v = getParamVal(msg, "tByp")).length())   cfg.invTempBypass = constrain(v.toInt(), cfg.invTempHigh + 2, 90);
+    if ((v = getParamVal(msg, "mBal")).length())   cfg.autoMonthlyBal = (v == "1");
+    if ((v = getParamVal(msg, "balDay")).length()) cfg.balDayOfMonth  = constrain(v.toInt(), 1, 28);
 
     prefs.putBool("auto", cfg.autoManage);
     prefs.putFloat("socG", cfg.socToGrid);
@@ -1256,6 +1335,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     prefs.putInt("tWarn", cfg.invTempWarn);
     prefs.putInt("tHigh", cfg.invTempHigh);
     prefs.putInt("tByp", cfg.invTempBypass);
+    prefs.putBool("mBal", cfg.autoMonthlyBal);
+    prefs.putInt("balDay", cfg.balDayOfMonth);
 
     inv.lastCmdSent = "[APK] Kurallar kaydedildi (Ust Sinir: %" + String(cfg.maxSocLimit, 0) + ")";
     forceSmartCheck = true; // Yeni kuralı hemen uygula
@@ -1333,6 +1414,9 @@ void setup() {
   cfg.invTempWarn   = prefs.getInt("tWarn", 65);
   cfg.invTempHigh   = prefs.getInt("tHigh", 72);
   cfg.invTempBypass = prefs.getInt("tByp", 78);
+  cfg.autoMonthlyBal = prefs.getBool("mBal", true);
+  cfg.balDayOfMonth  = prefs.getInt("balDay", 1);
+  cfg.lastBalMonth   = prefs.getInt("lastBalM", 0);
 
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false); // Anında 2ms tepki süresi - Telefon bağlantısı asla zaman aşımına uğramaz!
@@ -1615,6 +1699,31 @@ void setup() {
     server.sendHeader("Access-Control-Allow-Origin", "*");
     if (server.hasArg("c")) {
       String c = server.arg("c");
+      if (c == "START_MONTHLY_BAL") {
+        cfg.autoMonthlyBal = true;
+        cfg.lastBalMonth = 0;
+        monthlyBalActive = true;
+        balHoldStartMs = 0;
+        prefs.putBool("mBal", true);
+        prefs.putInt("lastBalM", 0);
+        forceSmartCheck = true;
+        inv.lastCmdSent = "[Web] Aylik %100 Balans Gunu BASLATILDI";
+        server.send(200, "application/json", "{\"res\":\"Aylik %100 Balans Baslatildi\"}");
+        return;
+      }
+      if (c == "CANCEL_MONTHLY_BAL") {
+        struct tm tNow;
+        int ym = 202611;
+        if (getLocalTime(&tNow, 20) && tNow.tm_year >= 120) ym = (tNow.tm_year + 1900) * 100 + (tNow.tm_mon + 1);
+        cfg.lastBalMonth = ym;
+        monthlyBalActive = false;
+        balHoldStartMs = 0;
+        prefs.putInt("lastBalM", ym);
+        forceSmartCheck = true;
+        inv.lastCmdSent = "[Web] Aylik %100 Balans IPTAL -> Normal %" + String(cfg.maxSocLimit, 0);
+        server.send(200, "application/json", "{\"res\":\"Aylik Balans Iptal Edildi\"}");
+        return;
+      }
       if (c.startsWith("BMS:")) {
         String r = handleBmsControlCmd(c);
         inv.lastCmdSent = "[BMS] " + r;
@@ -1662,6 +1771,8 @@ void setup() {
     if (server.hasArg("tWarn"))  cfg.invTempWarn   = constrain(server.arg("tWarn").toInt(), 45, 78);
     if (server.hasArg("tHigh"))  cfg.invTempHigh   = constrain(server.arg("tHigh").toInt(), cfg.invTempWarn + 2, 84);
     if (server.hasArg("tByp"))   cfg.invTempBypass = constrain(server.arg("tByp").toInt(), cfg.invTempHigh + 2, 90);
+    if (server.hasArg("mBal"))   cfg.autoMonthlyBal = (server.arg("mBal") == "1");
+    if (server.hasArg("balDay")) cfg.balDayOfMonth  = constrain(server.arg("balDay").toInt(), 1, 28);
 
     prefs.putBool("auto", cfg.autoManage);
     prefs.putFloat("socG", cfg.socToGrid);
@@ -1679,6 +1790,8 @@ void setup() {
     prefs.putInt("tWarn", cfg.invTempWarn);
     prefs.putInt("tHigh", cfg.invTempHigh);
     prefs.putInt("tByp", cfg.invTempBypass);
+    prefs.putBool("mBal", cfg.autoMonthlyBal);
+    prefs.putInt("balDay", cfg.balDayOfMonth);
     forceSmartCheck = true;
     server.send(200, "application/json", "{\"saved\":true}");
   });

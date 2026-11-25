@@ -96,7 +96,7 @@ void updateEnergyStats(bool invOk, int pvW, int loadW, bool isLineMode, bool bms
   }
 
   float dtH = dtMs / 3600000.0f;
-  float pvKwhInc   = (invOk && pvW > 0)   ? (pvW / 1000.0f) * dtH   : 0.0f;
+  float pvKwhInc   = (invOk && pvW >= 15) ? (pvW / 1000.0f) * dtH   : 0.0f;
   float loadKwhInc = (invOk && loadW > 0) ? (loadW / 1000.0f) * dtH : 0.0f;
   float bmsW       = bmsOk ? (bmsV * bmsA) : 0.0f;
   float chgKwhInc  = (bmsW > 5.0f)  ? (bmsW / 1000.0f) * dtH  : 0.0f;
