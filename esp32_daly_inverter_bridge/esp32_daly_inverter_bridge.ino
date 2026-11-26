@@ -120,8 +120,9 @@ struct InverterData {
   float    invBattVoltage  = 0.0;   // İnverterin ölçtüğü Akü Voltajı (V)
   int      chgCurrent      = 0;     // İnverter Şarj Akımı (A)
   int      disCurrent      = 0;     // İnverter Deşarj Akımı (A)
-  int      invTemp         = 0;     // İnverter Sıcaklığı (°C)
-  float    pvCurrent       = 0.0;   // Solar Panel Akımı (A)
+  int      invTemp         = 0;     // Gerçek İnverter Soğutucu Sıcaklığı (°C - Q1 max(IGBT,DCDC,Trafo))
+  int      mpptTemp        = 0;     // QPIGS[11]: Ham HV-MPPT Bobin/NTC Değeri
+  float    pvCurrent       = 0.0;   // Gerçek Solar Panel Dizi Akımı (A = pvW / pvV)
   float    pvVoltage       = 0.0;   // Solar Panel Voltajı (V)
   int      pvPowerWatt     = 0;     // Solar Üretim Gücü (W)
   bool     sccChgOn        = false; // QPIGS b1: Solar MPPT şarj aktif mi?
@@ -132,6 +133,7 @@ struct InverterData {
   int      sccTemp         = 0;     // Q1[5]: MPPT SCC Sıcaklığı (°C)
   int      fanSpeedPct     = 0;     // Q1[12]: Fan Hızı (%)
   int      chgStageCode    = 10;    // Q1[16]: 10=Boşta, 11=Bulk, 12=Absorb, 13=Float
+  bool     hwOverTemp      = false; // QPIWS bit 9: Donanımsal aşırı sıcaklık bayrağı
   String   warnText        = "Uyarı Yok"; // QPIWS: 32-bit canlı inverter uyarı/arıza durumu
   String   workMode        = "Bilinmiyor"; // SBU / Line / Battery
   String   lastCmdSent     = "Yok";
@@ -201,6 +203,7 @@ struct SmartConfig {
 int      currentTargetChargeAmp = -1;
 String   currentTargetOutputPop = "";
 String   currentTargetChgPcp    = "";
+bool     emergGridChgActive     = false; // Acil düşük pil şebeke şarjını ESP32 mi açtı?
 bool     baseLiFePO4Synced      = false;
 bool     socCapActive           = false; // Üst % SoC şarj sınırı şu an devrede mi?
 bool     monthlyBalActive       = false; // Aylık otomatik %100 balans günü şu an devrede mi?
@@ -463,6 +466,8 @@ void pollInverterExtended() {
       inv.trafoTemp    = q[8];
       inv.fanSpeedPct  = constrain(q[12], 0, 100);
       if (idx >= 17) inv.chgStageCode = q[16];
+      int q1Max = max(max(inv.igbtTemp, inv.dcdcTemp), max(inv.trafoTemp, inv.sccTemp));
+      if (q1Max > 0) inv.invTemp = q1Max;
     }
   }
 
@@ -477,6 +482,7 @@ void pollInverterExtended() {
     if (allZeroOne) {
       String w = "";
       auto wBit = [&](int n) -> bool { return (n < (int)b.length() && b[n] == '1'); };
+      inv.hwOverTemp = wBit(9);
       if (wBit(1))  w += "İnverter Arıza! ";
       if (wBit(2))  w += "Bus Yüksek! ";
       if (wBit(3))  w += "Bus Düşük! ";
@@ -523,7 +529,9 @@ void pollInverter() {
     inv.loadPercent    = (int)v[6];
     inv.invBattVoltage = v[8];
     inv.chgCurrent     = (int)v[9];
-    inv.invTemp        = (int)v[11];
+    inv.mpptTemp       = (int)v[11];
+    int q1Max          = max(max(inv.igbtTemp, inv.dcdcTemp), max(inv.trafoTemp, inv.sccTemp));
+    inv.invTemp        = (q1Max > 0) ? q1Max : inv.mpptTemp;
     inv.pvCurrent      = v[12];
     inv.pvVoltage      = v[13];
     inv.disCurrent     = (int)v[15];
@@ -535,12 +543,16 @@ void pollInverter() {
       inv.acChgOn  = false;
     }
     inv.pvPowerWatt    = (int)v[19];
-    if (inv.pvPowerWatt == 0 && inv.pvVoltage > 10) {
+    if (inv.pvPowerWatt == 0 && inv.pvVoltage > 10 && inv.pvVoltage <= 160.0f) {
       inv.pvPowerWatt = (int)(inv.pvVoltage * inv.pvCurrent);
     }
     // Gece ADC gürültüsü temizliği (PV < 15W veya PV voltajı < 40V iken 0W say)
     if (inv.pvPowerWatt < 15 || inv.pvVoltage < 40.0f) {
       inv.pvPowerWatt = 0;
+      inv.pvCurrent   = 0.0f;
+    } else if (inv.pvVoltage > 60.0f) {
+      // 450V HV-MPPT (PI30 v96.00) v[12]'de akü şarj akımını döndürür; gerçek panel dizi akımı = P / V
+      inv.pvCurrent   = (float)inv.pvPowerWatt / inv.pvVoltage;
     }
     inv.lastUpdateMs   = millis();
 
@@ -934,38 +946,39 @@ String applyFullLiFePO4Setup(bool forceWrite = false) {
   };
 
   // 1) Program 05: Akü Tipi -> USE (PBT02) - LiFePO4 ayarı olmayan inverterde şarttır!
-  setIfNeeded((int)p[12] != 2, "PBT02");
-  // 2-3) Program 26 & 27: Bulk & Float Voltajı (Üst sınır zaten doluysa yükseltme; aksi halde doğru sırayla uygula!)
-  bool allowVoltSync = forceWrite || !bms.connected || (cfg.maxSocLimit >= 99.5f) || (bms.soc < cfg.maxSocLimit);
-  if (allowVoltSync) {
+  if ((int)p[12] != 2 || forceWrite) {
+    String r = sendInverterCommand("PBT02", 800);
+    log += "PBT02:" + r + " ";
+    delay(300);
+  }
+  // Kullanıcı elle voltaj/öncelik değiştirdiyse açılışta ezme; tam profili sadece butona basıldığında (forceWrite=true) yaz!
+  if (forceWrite) {
     char bCmd[16], fCmd[16];
     snprintf(bCmd, sizeof(bCmd), "PCVV%.1f", cfg.bulkVoltage);
     snprintf(fCmd, sizeof(fCmd), "PBFT%.1f", cfg.floatVoltage);
     if (cfg.bulkVoltage >= p[10]) {
-      setIfNeeded(fabs(p[10] - cfg.bulkVoltage) > 0.15f, String(bCmd));
-      setIfNeeded(fabs(p[11] - cfg.floatVoltage) > 0.15f, String(fCmd));
+      setIfNeeded(true, String(bCmd));
+      setIfNeeded(true, String(fCmd));
     } else {
-      setIfNeeded(fabs(p[11] - cfg.floatVoltage) > 0.15f, String(fCmd));
-      setIfNeeded(fabs(p[10] - cfg.bulkVoltage) > 0.15f, String(bCmd));
+      setIfNeeded(true, String(fCmd));
+      setIfNeeded(true, String(bCmd));
     }
+    setIfNeeded(true, "PSDV45.0");
+    setIfNeeded(true, "PBCV46.0");
+    setIfNeeded(true, "PBDV53.0");
+    setIfNeeded(true, "MUCHGC010");
   }
-  // 4) Program 29: Düşük Voltaj Kesme -> 45.0V (2.81V/hücre)
-  setIfNeeded(fabs(p[9] - 45.0f) > 0.25f, "PSDV45.0");
-  // 5) Program 12: Şebekeye Dönüş Voltajı -> 46.0V (karar ESP32'de!)
-  setIfNeeded(fabs(p[8] - 46.0f) > 0.25f, "PBCV46.0");
-  // 6) Program 13: Aküye Dönüş Voltajı -> 53.0V
-  setIfNeeded(fabs(p[22] - 53.0f) > 0.25f, "PBDV53.0");
-  // 7) Program 11: Şebeke Şarj Akımı -> 10A
-  setIfNeeded((int)p[13] != cfg.gridChargeAmp, "MUCHGC010");
 
   // Güncel QPIRI'yi tekrar oku ve kaydet
-  delay(250);
-  String q2 = sendInverterCommand("QPIRI", 900);
-  if (q2.startsWith("(") && q2.length() > 40) invQpiriRaw = q2;
+  if (log.length() > 0) {
+    delay(250);
+    String q2 = sendInverterCommand("QPIRI", 900);
+    if (q2.startsWith("(") && q2.length() > 40) invQpiriRaw = q2;
+  }
 
   baseLiFePO4Synced = true;
-  if (log.length() == 0) log = "Tum 16S LiFePO4 ayarlari uyumlu";
-  inv.lastCmdSent = "[LiFePO4 Ayar] " + log;
+  if (log.length() > 0) inv.lastCmdSent = "[LiFePO4 Ayar] " + log;
+  else log = "USE Modu Aktif (Mevcut Ayarlar Korundu)";
   return log;
 }
 
@@ -1006,17 +1019,17 @@ String setInverterChargeAmp(int amp, String* usedCmd = nullptr) {
 void runSmartBmsControl() {
   if (!cfg.autoManage || !inv.connected) return;
 
-  // --- KATMAN -1 (EN YÜKSEK ÖNCELİK): İNVERTER 3 KADEMELİ TERMAL KORUMA & ACİL BYPASS ---
+  // --- KATMAN -1 (EN YÜKSEK ÖNCELİK): İNVERTER 3 KADEMELİ TERMAL KORUMA & ACİL BYPASS (Q1 GERÇEK ISI + QPIWS) ---
   // BMS bağlantısından bağımsız çalışır; inverter aşırı ısınırsa bekleme süresini atlayıp ANINDA müdahale eder!
   int nextTherm = thermalLevel;
-  if (inv.invTemp >= cfg.invTempBypass) {
+  if (inv.invTemp >= cfg.invTempBypass || inv.hwOverTemp) {
     nextTherm = 3;
   } else if (thermalLevel < 3) {
     if (inv.invTemp >= cfg.invTempHigh) nextTherm = 2;
     else if (thermalLevel < 2 && inv.invTemp >= cfg.invTempWarn) nextTherm = 1;
   }
   // Soğuma histerezisi (Bypass -13°C [78->65°C], Kademe2 -6°C [72->66°C], Kademe1 -5°C [65->60°C])
-  if (thermalLevel == 3 && inv.invTemp <= (cfg.invTempBypass - 13)) {
+  if (thermalLevel == 3 && !inv.hwOverTemp && inv.invTemp <= (cfg.invTempBypass - 13)) {
     nextTherm = (inv.invTemp >= cfg.invTempHigh) ? 2 : ((inv.invTemp >= cfg.invTempWarn) ? 1 : 0);
   } else if (thermalLevel == 2 && inv.invTemp <= (cfg.invTempHigh - 6)) {
     nextTherm = (inv.invTemp >= cfg.invTempWarn) ? 1 : 0;
@@ -1082,11 +1095,16 @@ void runSmartBmsControl() {
     return;
   }
 
-  // İlk bağlantıda inverterin temel 16S LiFePO4 ayarlarını (USE, 45.0V, PBCV 46V, PBDV 53V) doğrula
+  // İlk bağlantıda USE modunu doğrula ve mevcut kademeyi inverterden devral (gereksiz EEPROM yazmasını önle)
   if (!baseLiFePO4Synced) {
     applyFullLiFePO4Setup(false);
-    lastInverterCmdMs = millis();
-    return;
+    if (invSet.valid && chargeVoltStage == -1) {
+      if (fabs(invSet.bulkV - 52.8f) <= 0.2f) chargeVoltStage = 2;
+      else if (fabs(invSet.bulkV - 55.2f) <= 0.2f) chargeVoltStage = 1;
+      else chargeVoltStage = 0;
+      currentTargetChargeAmp = invSet.maxChgA;
+      currentTargetOutputPop = "POP0" + String(invSet.outPrio);
+    }
   }
 
   // --- AYLIK OTOMATİK %100 BALANS & KALİBRASYON GÜNÜ KONTROLÜ ---
@@ -1267,18 +1285,22 @@ void runSmartBmsControl() {
     return;
   }
 
-  // --- KATMAN 3: ACİL ŞEBEKE DESTEK ŞARJI (KIŞ / GECE KORUMASI) ---
-  String desiredPcp = currentTargetChgPcp;
+  // --- KATMAN 3: ACİL ŞEBEKE DESTEK ŞARJI (Sadece kritik düşük pilde devreye girer; kullanıcının manuel CSO/OSO ayarına dokunmaz!) ---
   if (bms.soc <= cfg.socGridChgOn || (bms.minCellV > 1.5f && bms.minCellV <= 2.85f)) {
-    desiredPcp = "PCP02"; // Güneş + Şebeke (10A destek şarjı aç)
-  } else if (bms.soc >= cfg.socGridChgOff) {
-    desiredPcp = "PCP03"; // Sadece Güneş (OSO - Şebekeden boşuna fatura yazmasın)
-  }
-
-  if (desiredPcp.length() > 0 && desiredPcp != currentTargetChgPcp) {
-    String r = sendInverterCommand(desiredPcp, 800);
-    currentTargetChgPcp = desiredPcp;
-    inv.lastCmdSent = desiredPcp + (desiredPcp == "PCP02" ? " [Acil Sebeke Sarji ACIK] " : " [Sadece Gunes OSO] ") + r;
+    if (!emergGridChgActive || currentTargetChgPcp != "PCP02") {
+      String r = sendInverterCommand("PCP02", 800);
+      emergGridChgActive = true;
+      currentTargetChgPcp = "PCP02";
+      forceQpiriRefresh = true;
+      inv.lastCmdSent = "PCP02 [Acil Sebeke Sarji ACIK] " + r;
+      lastInverterCmdMs = millis();
+    }
+  } else if (emergGridChgActive && bms.soc >= cfg.socGridChgOff) {
+    String r = sendInverterCommand("PCP03", 800);
+    emergGridChgActive = false;
+    currentTargetChgPcp = "PCP03";
+    forceQpiriRefresh = true;
+    inv.lastCmdSent = "PCP03 [Acil Sarj Tamam -> OSO] " + r;
     lastInverterCmdMs = millis();
   }
 }
@@ -1352,6 +1374,7 @@ String buildStatusJson() {
   j += "\"sccChg\":" + String(inv.sccChgOn ? "true" : "false") + ",";
   j += "\"acChg\":" + String(inv.acChgOn ? "true" : "false") + ",";
   j += "\"temp\":" + String(inv.invTemp) + ",";
+  j += "\"mpptT\":" + String(inv.mpptTemp) + ",";
   j += "\"igbtT\":" + String(inv.igbtTemp) + ",";
   j += "\"dcdcT\":" + String(inv.dcdcTemp) + ",";
   j += "\"trafoT\":" + String(inv.trafoTemp) + ",";
@@ -2038,10 +2061,6 @@ void setup() {
       maintainMqtt();
       if (millis() - lastInvPollMs >= 950) {
         pollInverter();
-        updateEnergyStats(inv.connected, inv.pvPowerWatt, inv.acLoadWatt,
-                          inv.workMode.indexOf("(L)") >= 0,
-                          bms.connected, bms.totalVoltage, bms.current);
-        runSmartBmsControl(); // Kritik sınır/termal değişimlerinde 0ms beklemesiz ANINDA müdahale!
         if (forceQpiriRefresh || !invSet.valid || (millis() - lastQpiriPollMs >= 15000)) {
           forceQpiriRefresh = false;
           pollInverterSettings();
@@ -2054,6 +2073,10 @@ void setup() {
           pollInverterExtended();
           lastQ1PollMs = millis();
         }
+        updateEnergyStats(inv.connected, inv.pvPowerWatt, inv.acLoadWatt,
+                          inv.workMode.indexOf("(L)") >= 0,
+                          bms.connected, bms.totalVoltage, bms.current);
+        runSmartBmsControl(); // Q1 gerçek ısı + BMS verisiyle 0ms beklemesiz ANINDA müdahale!
         lastInvPollMs = millis();
       }
       String fresh = buildStatusJson();

@@ -792,7 +792,7 @@ function renderData(d){
   document.getElementById('lastCmd').innerText  = 'Son: ' + (i.lastCmd || '---');
   document.getElementById('roInvCur').innerText = (i.chgA||0) + ' A Şarj / ' + (i.disA||0) + ' A Deşarj';
   if(i.igbtT !== undefined){
-    const sccExtra = (i.sccT && Number(i.sccT) > 0) ? ` (MPPT:${i.sccT}°)` : '';
+    const sccExtra = (i.mpptT && Number(i.mpptT) > 0) ? ` (MPPT NTC:${i.mpptT})` : '';
     document.getElementById('roQ1Temps').innerText = `${i.igbtT} / ${i.dcdcT||0} / ${i.trafoT||0} °C${sccExtra}`;
     document.getElementById('roQ1Fan').innerText = `Fan %${i.fanPct||0} • ${stgMap[i.chgStg]||'Aktif'}`;
   }
